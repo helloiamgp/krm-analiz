@@ -1,0 +1,63 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'  # v1.0, v2.1 gibi tag'lerde çalışır
+  workflow_dispatch:  # Manuel tetikleme
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --onefile --name="KRM-Analiz" --add-data="fonts;fonts" --console --clean krm.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: KRM-Analiz-Windows
+        path: dist/KRM-Analiz.exe
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/KRM-Analiz.exe
+        body: |
+          ## KRM Analiz Aracı - Windows Sürümü
+
+          ### 📥 İndirme
+          - **KRM-Analiz.exe** dosyasını indirin
+
+          ### 🚀 Kullanım
+          1. KRM-Analiz.exe'yi istediğiniz klasöre kopyalayın
+          2. KRM PDF dosyalarınızı aynı klasöre koyun
+          3. KRM-Analiz.exe'yi çift tıklayın
+          4. Raporlar output/ klasöründe oluşur
+
+          ### ⚠️ Önemli Notlar
+          - İlk çalıştırmada Windows Defender uyarısı alabilirsiniz
+          - "Yine de çalıştır" seçeneğini tıklayın
+          - Python kurulumu gerektirmez
+
+          ### 🔧 Sistem Gereksinimleri
+          - Windows 10/11 (64-bit)
+          - En az 100 MB boş disk alanı
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
