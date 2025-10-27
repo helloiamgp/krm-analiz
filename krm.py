@@ -28,6 +28,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle, PageBreak
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 # Constants
 PASSIVE_SOURCE_CUTOFF_DAYS = 180
@@ -36,6 +38,62 @@ CRITICAL_USAGE_THRESHOLD = 100.0
 CRITICAL_DELAY_DAYS = 30
 
 console = Console()
+
+def register_fonts() -> bool:
+    """
+    Türkçe karakter desteği için fontları kaydet.
+
+    Platformlara göre uygun Türkçe destekli fontları kullanır:
+    - macOS: Arial Unicode MS
+    - Linux: DejaVu Sans
+    - Windows: Arial
+
+    Returns:
+        Font başarıyla yüklendiyse True, yoksa False
+    """
+    try:
+        font_registered = False
+
+        # macOS font yolları (Arial Türkçe karakterleri destekler)
+        macos_fonts = [
+            ('/Library/Fonts/Arial.ttf', 'DejaVu', None),
+            ('/Library/Fonts/Arial Bold.ttf', None, 'DejaVu-Bold'),
+        ]
+
+        # Linux font yolları
+        linux_fonts = [
+            ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'DejaVu', None),
+            ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', None, 'DejaVu-Bold'),
+        ]
+
+        # Windows font yolları
+        windows_fonts = [
+            ('C:\\Windows\\Fonts\\arial.ttf', 'DejaVu', None),
+            ('C:\\Windows\\Fonts\\arialbd.ttf', None, 'DejaVu-Bold'),
+        ]
+
+        all_fonts = macos_fonts + linux_fonts + windows_fonts
+
+        for font_path, normal_name, bold_name in all_fonts:
+            if Path(font_path).exists():
+                try:
+                    if normal_name:
+                        pdfmetrics.registerFont(TTFont(normal_name, font_path))
+                        font_registered = True
+                        console.print(f"[dim]✓ Font yüklendi: {Path(font_path).name}[/dim]")
+                    if bold_name:
+                        pdfmetrics.registerFont(TTFont(bold_name, font_path))
+                except Exception as e:
+                    continue
+
+        if not font_registered:
+            console.print("[yellow]⚠ Türkçe destekli font bulunamadı, varsayılan Helvetica kullanılacak[/yellow]")
+            console.print("[yellow]  Türkçe karakterler düzgün görüntülenmeyebilir[/yellow]")
+
+        return font_registered
+    except Exception as e:
+        console.print(f"[yellow]⚠ Font yükleme hatası: {e}[/yellow]")
+        return False
 
 def find_column_indices(header: List[Any], column_mapping: Dict[str, List[str]]) -> Dict[str, int]:
     """
@@ -505,17 +563,33 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     story = []
     styles = getSampleStyleSheet()
-    
+
+    # Türkçe font desteği için font adını belirle
+    # Eğer DejaVu yüklü değilse Helvetica kullan (varsayılan)
+    try:
+        registered_fonts = pdfmetrics.getRegisteredFontNames()
+        if 'DejaVu' in registered_fonts:
+            font_name = 'DejaVu'
+            font_name_bold = 'DejaVu-Bold' if 'DejaVu-Bold' in registered_fonts else 'DejaVu'
+        else:
+            # Fallback to Helvetica
+            font_name = 'Helvetica'
+            font_name_bold = 'Helvetica-Bold'
+    except:
+        font_name = 'Helvetica'
+        font_name_bold = 'Helvetica-Bold'
+
     # Başlık
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
+        fontName=font_name_bold,
         fontSize=18,
         textColor=colors.HexColor('#1a1a1a'),
         spaceAfter=30,
         alignment=TA_CENTER
     )
-    
+
     story.append(Paragraph("KRM Analiz Raporu", title_style))
     story.append(Spacer(1, 0.5*cm))
     
@@ -532,7 +606,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (0, -1), font_name_bold),
+        ('FONTNAME', (1, 0), (1, -1), font_name),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -571,7 +646,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('BACKGROUND', (1, 4), (1, 4), colors.HexColor('#ffe6e6') if critical_count > 0 else colors.white),
         ('BACKGROUND', (1, 5), (1, 5), colors.HexColor('#fff9e6') if warning_count > 0 else colors.white),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (0, -1), font_name_bold),
+        ('FONTNAME', (1, 0), (1, -1), font_name),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -612,7 +688,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9d9d9')),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f5f5f5')),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('ALIGN', (2, 1), (3, -1), 'RIGHT'),
@@ -645,7 +722,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ffe6e6')),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -677,7 +755,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fff9e6')),
             ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -727,7 +806,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     table_style_commands = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+        ('FONTNAME', (0, 1), (-1, -1), font_name),
         ('FONTSIZE', (0, 0), (-1, -1), 7),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
@@ -735,7 +815,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
     ]
-    
+
     # Add zebra stripes
     for i in range(1, len(detail_data)):
         if i % 2 == 0:
@@ -750,11 +830,12 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     footer_style = ParagraphStyle(
         'Footer',
         parent=styles['Normal'],
+        fontName=font_name,
         fontSize=8,
         textColor=colors.grey,
         alignment=TA_CENTER
     )
-    story.append(Paragraph("Rapor otomatik olarak KRM Analiz Araci v2 tarafindan olusturulmustur.", footer_style))
+    story.append(Paragraph("Rapor otomatik olarak KRM Analiz Aracı v2 tarafından oluşturulmuştur.", footer_style))
     
     # Build PDF
     doc.build(story)
@@ -862,12 +943,15 @@ def main() -> None:
     Komut satırı argümanlarını parse eder ve PDF analiz işlemini başlatır.
     """
     console.print(Panel.fit(
-        "[bold cyan]KRM Rapor Analiz Araci v2[/bold cyan]\n"
+        "[bold cyan]KRM Rapor Analiz Aracı v2[/bold cyan]\n"
         f"Tarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
         "[dim]PDF raporlama ve pasif kaynak tespiti[/dim]",
         border_style="cyan"
     ))
-    
+
+    # Türkçe font desteğini aktifleştir
+    register_fonts()
+
     output_dir = ensure_output_dir()
     
     if len(sys.argv) > 1:

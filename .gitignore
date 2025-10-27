@@ -26,6 +26,10 @@ ENV/
 env/
 .venv
 
+# Test files
+test_*.py
+test_*.pdf
+
 # IDE
 .vscode/
 .idea/
