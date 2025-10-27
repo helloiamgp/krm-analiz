@@ -542,7 +542,16 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     Returns:
         Oluşturulan PDF dosyasının Path'i
     """
-    from xml.sax.saxutils import escape
+    def create_heading(text: str, font_bold: str) -> RLTable:
+        """Türkçe karakterli başlık oluştur (Paragraph yerine Table kullan)"""
+        heading = RLTable([[text]], colWidths=[17*cm])
+        heading.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, 0), font_bold),
+            ('FONTSIZE', (0, 0), (0, 0), 14),
+            ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#1a1a1a')),
+            ('BOTTOMPADDING', (0, 0), (0, 0), 10),
+        ]))
+        return heading
 
     pdf_filename = Path(result['pdf_name']).stem + '.pdf'
     pdf_path = output_dir / pdf_filename
@@ -585,7 +594,16 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         alignment=TA_CENTER
     )
 
-    story.append(Paragraph(escape("KRM Analiz Raporu"), title_style))
+    # Başlık - Table kullan (Paragraph İ harfini yutuyor)
+    baslik_table = RLTable([["KRM Analiz Raporu"]], colWidths=[17*cm])
+    baslik_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), font_name_bold),
+        ('FONTSIZE', (0, 0), (0, 0), 18),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#1a1a1a')),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (0, 0), 20),
+    ]))
+    story.append(baslik_table)
     story.append(Spacer(1, 0.5*cm))
     
     # Genel Bilgiler
@@ -616,8 +634,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     story.append(Spacer(1, 0.8*cm))
     
     # Özet İstatistikler
-    # NOT: "İ" harfi Paragraph'ta <i> tag'i olarak algılanmasın diye escape edilmeli
-    story.append(Paragraph(escape("Özet İstatistikler"), styles['Heading2']))
+    story.append(create_heading("Özet İstatistikler", font_name_bold))
     story.append(Spacer(1, 0.3*cm))
     
     total_sources = len(result['active_sources']) + len(result['passive_sources'])
@@ -658,7 +675,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     # Pasif Kaynaklar
     if result['passive_sources']:
-        story.append(Paragraph(escape(f"Pasif Kaynaklar ({passive_count})"), styles['Heading2']))
+        story.append(create_heading(f"Pasif Kaynaklar ({passive_count})", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
         
         passive_data = [['Kaynak', 'Son Revize', 'Grup Limit', 'Toplam Limit', 'Durum']]
@@ -700,7 +717,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Kritik Sorunlar
     critical = [a for a in result['anomalies'] if a['severity'] == 'CRITICAL']
     if critical:
-        story.append(Paragraph(escape("Kritik Sorunlar"), styles['Heading2']))
+        story.append(create_heading("Kritik Sorunlar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
         
         critical_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
@@ -712,7 +729,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
                 a['detail']
             ])
         
-        critical_table = RLTable(critical_data, colWidths=[2*cm, 4*cm, 11*cm])
+        critical_table = RLTable(critical_data, colWidths=[3*cm, 5.5*cm, 8.5*cm])
         critical_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#cc0000')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -733,7 +750,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Uyarılar
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
-        story.append(Paragraph(escape("Uyarılar"), styles['Heading2']))
+        story.append(create_heading("Uyarılar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
         
         warning_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
@@ -745,7 +762,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
                 a['detail']
             ])
         
-        warning_table = RLTable(warning_data, colWidths=[2*cm, 4*cm, 11*cm])
+        warning_table = RLTable(warning_data, colWidths=[3*cm, 5.5*cm, 8.5*cm])
         warning_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ffcc00')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
@@ -765,7 +782,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     # Yeni sayfa - Detaylı Kaynak Bilgileri
     story.append(PageBreak())
-    story.append(Paragraph(escape("Detaylı Aktif Kaynak Bilgileri"), styles['Heading2']))
+    story.append(create_heading("Detaylı Aktif Kaynak Bilgileri", font_name_bold))
     story.append(Spacer(1, 0.3*cm))
     
     detail_data = [['Kaynak', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
@@ -831,7 +848,15 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         textColor=colors.grey,
         alignment=TA_CENTER
     )
-    story.append(Paragraph(escape("Rapor otomatik olarak KRM Analiz Aracı v2 tarafından oluşturulmuştur."), footer_style))
+    # Footer - basit Table (Türkçe ı ve ş var ama footer önemli değil)
+    footer_table = RLTable([["Rapor otomatik olarak KRM Analiz Aracı v2 tarafından oluşturulmuştur."]], colWidths=[17*cm])
+    footer_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, 0), font_name),
+        ('FONTSIZE', (0, 0), (0, 0), 8),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.grey),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+    ]))
+    story.append(footer_table)
     
     # Build PDF
     doc.build(story)
