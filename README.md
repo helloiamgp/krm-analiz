@@ -23,16 +23,23 @@ Türkiye Bankalar Birliği (TBB) KRM raporlarını otomatik olarak analiz eden, 
 pip install pdfplumber reportlab rich
 ```
 
-## 🚀 Kullanım
+## 🚀 Kurulum ve Kullanım
 
-### Tek PDF Analizi
+### Kurulum (İlk Seferinde)
 ```bash
-python krm.py rapor.pdf
+pip3 install pdfplumber reportlab rich
 ```
 
-### Toplu Analiz (Dizindeki Tüm PDF'ler)
+### Kullanım
+
+**Tek PDF Analizi:**
 ```bash
-python krm.py
+python3 krm.py "rapor.pdf"
+```
+
+**Toplu Analiz (Dizindeki Tüm PDF'ler):**
+```bash
+python3 krm.py
 ```
 
 ## 📂 Çıktı Yapısı
