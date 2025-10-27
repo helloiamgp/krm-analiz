@@ -44,55 +44,86 @@ def register_fonts() -> bool:
     Türkçe karakter desteği için fontları kaydet.
 
     Platformlara göre uygun Türkçe destekli fontları kullanır:
-    - macOS: Arial Unicode MS
+    - macOS: Arial (System fonts)
     - Linux: DejaVu Sans
     - Windows: Arial
 
     Returns:
         Font başarıyla yüklendiyse True, yoksa False
     """
+    from reportlab.pdfbase.pdfmetrics import registerFontFamily
+
     try:
         font_registered = False
 
-        # macOS font yolları (Arial Türkçe karakterleri destekler)
-        macos_fonts = [
-            ('/Library/Fonts/Arial.ttf', 'DejaVu', None),
-            ('/Library/Fonts/Arial Bold.ttf', None, 'DejaVu-Bold'),
+        # Platform bazlı font yolları
+        font_configs = [
+            # macOS - System fonts (Türkçe destekli)
+            {
+                'normal': '/System/Library/Fonts/Supplemental/Arial.ttf',
+                'bold': '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+                'italic': '/System/Library/Fonts/Supplemental/Arial Italic.ttf',
+                'bold_italic': '/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf',
+            },
+            # Linux - DejaVu Sans
+            {
+                'normal': '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                'bold': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                'italic': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
+                'bold_italic': '/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf',
+            },
+            # Windows - Arial
+            {
+                'normal': 'C:\\Windows\\Fonts\\arial.ttf',
+                'bold': 'C:\\Windows\\Fonts\\arialbd.ttf',
+                'italic': 'C:\\Windows\\Fonts\\ariali.ttf',
+                'bold_italic': 'C:\\Windows\\Fonts\\arialbi.ttf',
+            },
         ]
 
-        # Linux font yolları
-        linux_fonts = [
-            ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'DejaVu', None),
-            ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', None, 'DejaVu-Bold'),
-        ]
-
-        # Windows font yolları
-        windows_fonts = [
-            ('C:\\Windows\\Fonts\\arial.ttf', 'DejaVu', None),
-            ('C:\\Windows\\Fonts\\arialbd.ttf', None, 'DejaVu-Bold'),
-        ]
-
-        all_fonts = macos_fonts + linux_fonts + windows_fonts
-
-        for font_path, normal_name, bold_name in all_fonts:
-            if Path(font_path).exists():
+        for config in font_configs:
+            # Normal font'u kontrol et
+            if Path(config['normal']).exists():
                 try:
-                    if normal_name:
-                        pdfmetrics.registerFont(TTFont(normal_name, font_path))
-                        font_registered = True
-                        console.print(f"[dim]✓ Font yüklendi: {Path(font_path).name}[/dim]")
-                    if bold_name:
-                        pdfmetrics.registerFont(TTFont(bold_name, font_path))
+                    # Normal font kaydı
+                    pdfmetrics.registerFont(TTFont('CustomFont', config['normal']))
+                    font_registered = True
+
+                    # Bold font kaydı
+                    if Path(config.get('bold', '')).exists():
+                        pdfmetrics.registerFont(TTFont('CustomFont-Bold', config['bold']))
+
+                    # Italic font kaydı (opsiyonel)
+                    if Path(config.get('italic', '')).exists():
+                        pdfmetrics.registerFont(TTFont('CustomFont-Italic', config['italic']))
+
+                    # Bold Italic font kaydı (opsiyonel)
+                    if Path(config.get('bold_italic', '')).exists():
+                        pdfmetrics.registerFont(TTFont('CustomFont-BoldItalic', config['bold_italic']))
+
+                    # Font ailesini kaydet (Paragraph için gerekli)
+                    registerFontFamily(
+                        'CustomFont',
+                        normal='CustomFont',
+                        bold='CustomFont-Bold',
+                        italic='CustomFont-Italic',
+                        boldItalic='CustomFont-BoldItalic'
+                    )
+
+                    console.print(f"[dim]✓ Türkçe font yüklendi: {Path(config['normal']).name}[/dim]")
+                    break
+
                 except Exception as e:
+                    console.print(f"[yellow]⚠ Font yükleme hatası: {e}[/yellow]")
                     continue
 
         if not font_registered:
-            console.print("[yellow]⚠ Türkçe destekli font bulunamadı, varsayılan Helvetica kullanılacak[/yellow]")
+            console.print("[yellow]⚠ Türkçe destekli font bulunamadı, Helvetica kullanılacak[/yellow]")
             console.print("[yellow]  Türkçe karakterler düzgün görüntülenmeyebilir[/yellow]")
 
         return font_registered
     except Exception as e:
-        console.print(f"[yellow]⚠ Font yükleme hatası: {e}[/yellow]")
+        console.print(f"[red]✗ Font sistemi hatası: {e}[/red]")
         return False
 
 def find_column_indices(header: List[Any], column_mapping: Dict[str, List[str]]) -> Dict[str, int]:
@@ -565,14 +596,13 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     styles = getSampleStyleSheet()
 
     # Türkçe font desteği için font adını belirle
-    # Eğer DejaVu yüklü değilse Helvetica kullan (varsayılan)
     try:
         registered_fonts = pdfmetrics.getRegisteredFontNames()
-        if 'DejaVu' in registered_fonts:
-            font_name = 'DejaVu'
-            font_name_bold = 'DejaVu-Bold' if 'DejaVu-Bold' in registered_fonts else 'DejaVu'
+        if 'CustomFont' in registered_fonts:
+            font_name = 'CustomFont'
+            font_name_bold = 'CustomFont-Bold' if 'CustomFont-Bold' in registered_fonts else 'CustomFont'
         else:
-            # Fallback to Helvetica
+            # Fallback to Helvetica (Türkçe karakterler düzgün görüntülenmeyebilir)
             font_name = 'Helvetica'
             font_name_bold = 'Helvetica-Bold'
     except:
@@ -621,7 +651,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     story.append(Spacer(1, 0.8*cm))
     
     # Özet İstatistikler
-    story.append(Paragraph("Ozet Istatistikler", styles['Heading2']))
+    story.append(Paragraph("Özet İstatistikler", styles['Heading2']))
     story.append(Spacer(1, 0.3*cm))
     
     total_sources = len(result['active_sources']) + len(result['passive_sources'])
@@ -637,7 +667,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ['Pasif Kaynak:', str(passive_count)],
         ['Tespit Edilen Sorun:', str(total_anomalies)],
         ['Kritik Sorunlar:', str(critical_count)],
-        ['Uyarilar:', str(warning_count)]
+        ['Uyarılar:', str(warning_count)]
     ]
     
     stats_table = RLTable(stats_data, colWidths=[6*cm, 6*cm])
@@ -737,7 +767,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Uyarılar
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
-        story.append(Paragraph("Uyarilar", styles['Heading2']))
+        story.append(Paragraph("Uyarılar", styles['Heading2']))
         story.append(Spacer(1, 0.3*cm))
         
         warning_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
@@ -769,7 +799,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     # Yeni sayfa - Detaylı Kaynak Bilgileri
     story.append(PageBreak())
-    story.append(Paragraph("Detayli Aktif Kaynak Bilgileri", styles['Heading2']))
+    story.append(Paragraph("Detaylı Aktif Kaynak Bilgileri", styles['Heading2']))
     story.append(Spacer(1, 0.3*cm))
     
     detail_data = [['Kaynak', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
@@ -990,22 +1020,22 @@ def main() -> None:
         print_single_report(result)
     
     console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
-    console.print(f"[bold]GENEL OZET[/bold]")
-    
+    console.print(f"[bold]GENEL ÖZET[/bold]")
+
     total_active = sum(len(r['active_sources']) for r in results if r['success'])
     total_passive = sum(len(r['passive_sources']) for r in results if r['success'])
     total_critical = sum(len([a for a in r['anomalies'] if a['severity'] == 'CRITICAL']) for r in results if r['success'])
     total_warnings = sum(len([a for a in r['anomalies'] if a['severity'] == 'WARNING']) for r in results if r['success'])
-    
+
     console.print(f"Analiz Edilen Rapor: {len(results)}")
     console.print(f"Toplam Aktif Kaynak: [green]{total_active}[/green]")
     console.print(f"Toplam Pasif Kaynak: [dim]{total_passive}[/dim]")
     console.print(f"Toplam Kritik Sorun: [red]{total_critical}[/red]")
-    console.print(f"Toplam Uyari: [yellow]{total_warnings}[/yellow]")
+    console.print(f"Toplam Uyarı: [yellow]{total_warnings}[/yellow]")
     console.print(f"\n[green]✓[/green] PDF raporlar kaydedildi: {output_dir}/")
     
     if total_critical == 0 and total_warnings == 0:
-        console.print("\n[bold green]🎉 Tum aktif kaynaklar temiz![/bold green]")
+        console.print("\n[bold green]🎉 Tüm aktif kaynaklar temiz![/bold green]")
 
 if __name__ == "__main__":
     main()
