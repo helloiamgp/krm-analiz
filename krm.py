@@ -717,77 +717,79 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         story.append(passive_table)
         story.append(Spacer(1, 0.8*cm))
     
-    # Kritik Sorunlar
+    # Kritik Sorunlar - Liste formatında
     critical = [a for a in result['anomalies'] if a['severity'] == 'CRITICAL']
     if critical:
         story.append(create_heading("Kritik Sorunlar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
-        
-        critical_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
-        
-        for a in critical:
-            critical_data.append([
-                a['kaynak'],
-                a['type'],
-                a['detail']
-            ])
-        
-        critical_table = RLTable(critical_data, colWidths=[3*cm, 5.5*cm, 8.5*cm])
-        critical_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#cc0000')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ffe6e6')),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
-            ('FONTNAME', (0, 1), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 5),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-        ]))
-        
-        story.append(critical_table)
-        story.append(Spacer(1, 0.8*cm))
+
+        # Her sorun için ayrı kutu
+        for idx, a in enumerate(critical, 1):
+            problem_data = [
+                [f"🔴 Sorun {idx}: {a['kaynak']}"],
+                [f"Tip: {a['type']}"],
+                [f"{a['detail']}"]
+            ]
+
+            problem_table = RLTable(problem_data, colWidths=[17*cm])
+            problem_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#cc0000')),
+                ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
+                ('FONTNAME', (0, 0), (0, 0), font_name_bold),
+                ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#ffe6e6')),
+                ('FONTNAME', (0, 1), (0, 1), font_name_bold),
+                ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#fff0f0')),
+                ('FONTNAME', (0, 2), (0, 2), font_name),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#cc0000')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+
+            story.append(problem_table)
+            story.append(Spacer(1, 0.3*cm))
+
+        story.append(Spacer(1, 0.5*cm))
     
-    # Uyarılar
+    # Uyarılar - Liste formatında
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
         story.append(create_heading("Uyarılar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
-        
-        warning_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
-        
-        for a in warnings:
-            warning_data.append([
-                a['kaynak'],
-                a['type'],
-                a['detail']
-            ])
-        
-        warning_table = RLTable(warning_data, colWidths=[3*cm, 5.5*cm, 8.5*cm])
-        warning_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ffcc00')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#fff9e6')),
-            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
-            ('FONTNAME', (0, 1), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 5),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-        ]))
-        
-        story.append(warning_table)
-        story.append(Spacer(1, 0.8*cm))
+
+        # Her uyarı için ayrı kutu
+        for idx, a in enumerate(warnings, 1):
+            warning_data = [
+                [f"⚠️ Uyarı {idx}: {a['kaynak']}"],
+                [f"Tip: {a['type']}"],
+                [f"{a['detail']}"]
+            ]
+
+            warning_table = RLTable(warning_data, colWidths=[17*cm])
+            warning_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#ffcc00')),
+                ('TEXTCOLOR', (0, 0), (0, 0), colors.black),
+                ('FONTNAME', (0, 0), (0, 0), font_name_bold),
+                ('BACKGROUND', (0, 1), (0, 1), colors.HexColor('#fff9e6')),
+                ('FONTNAME', (0, 1), (0, 1), font_name_bold),
+                ('BACKGROUND', (0, 2), (0, 2), colors.HexColor('#fffef0')),
+                ('FONTNAME', (0, 2), (0, 2), font_name),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#ffcc00')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+
+            story.append(warning_table)
+            story.append(Spacer(1, 0.3*cm))
+
+        story.append(Spacer(1, 0.5*cm))
     
     # Yeni sayfa - Detaylı Kaynak Bilgileri
     story.append(PageBreak())
