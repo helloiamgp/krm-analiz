@@ -717,53 +717,65 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         story.append(passive_table)
         story.append(Spacer(1, 0.8*cm))
     
-    # Kritik Sorunlar - Basit liste (çerçevesiz)
+    # Kritik Sorunlar - Paragraph ile wordwrap
     critical = [a for a in result['anomalies'] if a['severity'] == 'CRITICAL']
     if critical:
         story.append(create_heading("Kritik Sorunlar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
 
-        # Her sorun için basit tablo (çerçevesiz, tek hücre)
+        # Paragraph için stil tanımla
+        critical_style = ParagraphStyle(
+            'CriticalStyle',
+            fontName=font_name,
+            fontSize=10,
+            textColor=colors.HexColor('#cc0000'),
+            leading=14,
+            leftIndent=0,
+            spaceBefore=0,
+            spaceAfter=8,
+        )
+
+        # Her sorun için Paragraph kullan (otomatik wordwrap)
         for idx, a in enumerate(critical, 1):
-            # Tek satırda tüm bilgi
-            text = f"• {a['kaynak']} - {a['type']}\n  {a['detail']}"
+            # HTML karakterlerini escape et (& < > " ')
+            kaynak = a['kaynak'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            atype = a['type'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            detail = a['detail'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-            problem_table = RLTable([[text]], colWidths=[17*cm])
-            problem_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (0, 0), font_name),
-                ('FONTSIZE', (0, 0), (0, 0), 10),
-                ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#cc0000')),
-                ('VALIGN', (0, 0), (0, 0), 'TOP'),
-                ('LEFTPADDING', (0, 0), (0, 0), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0), 8),
-            ]))
-
-            story.append(problem_table)
+            text = f"• {kaynak} - {atype}<br/>&nbsp;&nbsp;{detail}"
+            para = Paragraph(text, critical_style)
+            story.append(para)
 
         story.append(Spacer(1, 0.5*cm))
     
-    # Uyarılar - Basit liste (çerçevesiz)
+    # Uyarılar - Paragraph ile wordwrap
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
         story.append(create_heading("Uyarılar", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
 
-        # Her uyarı için basit tablo (çerçevesiz, tek hücre)
+        # Paragraph için stil tanımla
+        warning_style = ParagraphStyle(
+            'WarningStyle',
+            fontName=font_name,
+            fontSize=10,
+            textColor=colors.HexColor('#ff8800'),
+            leading=14,
+            leftIndent=0,
+            spaceBefore=0,
+            spaceAfter=8,
+        )
+
+        # Her uyarı için Paragraph kullan (otomatik wordwrap)
         for idx, a in enumerate(warnings, 1):
-            # Tek satırda tüm bilgi
-            text = f"• {a['kaynak']} - {a['type']}\n  {a['detail']}"
+            # HTML karakterlerini escape et (& < > " ')
+            kaynak = a['kaynak'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            atype = a['type'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            detail = a['detail'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-            warning_table = RLTable([[text]], colWidths=[17*cm])
-            warning_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (0, 0), font_name),
-                ('FONTSIZE', (0, 0), (0, 0), 10),
-                ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#ff8800')),
-                ('VALIGN', (0, 0), (0, 0), 'TOP'),
-                ('LEFTPADDING', (0, 0), (0, 0), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0), 8),
-            ]))
-
-            story.append(warning_table)
+            text = f"• {kaynak} - {atype}<br/>&nbsp;&nbsp;{detail}"
+            para = Paragraph(text, warning_style)
+            story.append(para)
 
         story.append(Spacer(1, 0.5*cm))
     
