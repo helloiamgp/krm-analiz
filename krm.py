@@ -542,6 +542,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     Returns:
         Oluşturulan PDF dosyasının Path'i
     """
+    from xml.sax.saxutils import escape
+
     pdf_filename = Path(result['pdf_name']).stem + '.pdf'
     pdf_path = output_dir / pdf_filename
     
@@ -583,7 +585,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         alignment=TA_CENTER
     )
 
-    story.append(Paragraph("KRM Analiz Raporu", title_style))
+    story.append(Paragraph(escape("KRM Analiz Raporu"), title_style))
     story.append(Spacer(1, 0.5*cm))
     
     # Genel Bilgiler
@@ -614,7 +616,8 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     story.append(Spacer(1, 0.8*cm))
     
     # Özet İstatistikler
-    story.append(Paragraph("Özet İstatistikler", styles['Heading2']))
+    # NOT: "İ" harfi Paragraph'ta <i> tag'i olarak algılanmasın diye escape edilmeli
+    story.append(Paragraph(escape("Özet İstatistikler"), styles['Heading2']))
     story.append(Spacer(1, 0.3*cm))
     
     total_sources = len(result['active_sources']) + len(result['passive_sources'])
@@ -655,7 +658,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     # Pasif Kaynaklar
     if result['passive_sources']:
-        story.append(Paragraph(f"Pasif Kaynaklar ({passive_count})", styles['Heading2']))
+        story.append(Paragraph(escape(f"Pasif Kaynaklar ({passive_count})"), styles['Heading2']))
         story.append(Spacer(1, 0.3*cm))
         
         passive_data = [['Kaynak', 'Son Revize', 'Grup Limit', 'Toplam Limit', 'Durum']]
@@ -697,7 +700,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Kritik Sorunlar
     critical = [a for a in result['anomalies'] if a['severity'] == 'CRITICAL']
     if critical:
-        story.append(Paragraph("Kritik Sorunlar", styles['Heading2']))
+        story.append(Paragraph(escape("Kritik Sorunlar"), styles['Heading2']))
         story.append(Spacer(1, 0.3*cm))
         
         critical_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
@@ -730,7 +733,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Uyarılar
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
-        story.append(Paragraph("Uyarılar", styles['Heading2']))
+        story.append(Paragraph(escape("Uyarılar"), styles['Heading2']))
         story.append(Spacer(1, 0.3*cm))
         
         warning_data = [['Kaynak', 'Sorun Tipi', 'Detay']]
@@ -762,7 +765,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     
     # Yeni sayfa - Detaylı Kaynak Bilgileri
     story.append(PageBreak())
-    story.append(Paragraph("Detaylı Aktif Kaynak Bilgileri", styles['Heading2']))
+    story.append(Paragraph(escape("Detaylı Aktif Kaynak Bilgileri"), styles['Heading2']))
     story.append(Spacer(1, 0.3*cm))
     
     detail_data = [['Kaynak', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
@@ -828,7 +831,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         textColor=colors.grey,
         alignment=TA_CENTER
     )
-    story.append(Paragraph("Rapor otomatik olarak KRM Analiz Aracı v2 tarafından oluşturulmuştur.", footer_style))
+    story.append(Paragraph(escape("Rapor otomatik olarak KRM Analiz Aracı v2 tarafından oluşturulmuştur."), footer_style))
     
     # Build PDF
     doc.build(story)
