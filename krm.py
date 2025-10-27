@@ -41,12 +41,9 @@ console = Console()
 
 def register_fonts() -> bool:
     """
-    Türkçe karakter desteği için fontları kaydet.
+    Türkçe karakter desteği için DejaVu Sans fontlarını kaydet.
 
-    Platformlara göre uygun Türkçe destekli fontları kullanır:
-    - macOS: Arial (System fonts)
-    - Linux: DejaVu Sans
-    - Windows: Arial
+    Fontlar proje içinde fonts/ dizininde bulunur.
 
     Returns:
         Font başarıyla yüklendiyse True, yoksa False
@@ -54,76 +51,41 @@ def register_fonts() -> bool:
     from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
     try:
-        font_registered = False
+        # Proje içindeki fonts dizini
+        font_dir = Path(__file__).parent / "fonts"
 
-        # Platform bazlı font yolları
-        font_configs = [
-            # macOS - System fonts (Türkçe destekli)
-            {
-                'normal': '/System/Library/Fonts/Supplemental/Arial.ttf',
-                'bold': '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
-                'italic': '/System/Library/Fonts/Supplemental/Arial Italic.ttf',
-                'bold_italic': '/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf',
-            },
-            # Linux - DejaVu Sans
-            {
-                'normal': '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-                'bold': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-                'italic': '/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf',
-                'bold_italic': '/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf',
-            },
-            # Windows - Arial
-            {
-                'normal': 'C:\\Windows\\Fonts\\arial.ttf',
-                'bold': 'C:\\Windows\\Fonts\\arialbd.ttf',
-                'italic': 'C:\\Windows\\Fonts\\ariali.ttf',
-                'bold_italic': 'C:\\Windows\\Fonts\\arialbi.ttf',
-            },
-        ]
+        font_normal = font_dir / "DejaVuSans.ttf"
+        font_bold = font_dir / "DejaVuSans-Bold.ttf"
 
-        for config in font_configs:
-            # Normal font'u kontrol et
-            if Path(config['normal']).exists():
-                try:
-                    # Normal font kaydı
-                    pdfmetrics.registerFont(TTFont('CustomFont', config['normal']))
-                    font_registered = True
+        if not font_normal.exists():
+            console.print(f"[red]✗ Font bulunamadı: {font_normal}[/red]")
+            console.print(f"[yellow]  Lütfen DejaVu fontlarını fonts/ dizinine yerleştirin[/yellow]")
+            return False
 
-                    # Bold font kaydı
-                    if Path(config.get('bold', '')).exists():
-                        pdfmetrics.registerFont(TTFont('CustomFont-Bold', config['bold']))
+        # Normal font kaydı
+        pdfmetrics.registerFont(TTFont('DejaVuSans', str(font_normal)))
 
-                    # Italic font kaydı (opsiyonel)
-                    if Path(config.get('italic', '')).exists():
-                        pdfmetrics.registerFont(TTFont('CustomFont-Italic', config['italic']))
+        # Bold font kaydı
+        if font_bold.exists():
+            pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', str(font_bold)))
+        else:
+            # Bold yoksa normal fontı kullan
+            pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', str(font_normal)))
 
-                    # Bold Italic font kaydı (opsiyonel)
-                    if Path(config.get('bold_italic', '')).exists():
-                        pdfmetrics.registerFont(TTFont('CustomFont-BoldItalic', config['bold_italic']))
+        # Font ailesini kaydet
+        registerFontFamily(
+            'DejaVuSans',
+            normal='DejaVuSans',
+            bold='DejaVuSans-Bold',
+            italic='DejaVuSans',  # Italic yoksa normal kullan
+            boldItalic='DejaVuSans-Bold'
+        )
 
-                    # Font ailesini kaydet (Paragraph için gerekli)
-                    registerFontFamily(
-                        'CustomFont',
-                        normal='CustomFont',
-                        bold='CustomFont-Bold',
-                        italic='CustomFont-Italic',
-                        boldItalic='CustomFont-BoldItalic'
-                    )
+        console.print(f"[green]✓ Türkçe font yüklendi: DejaVu Sans[/green]")
+        return True
 
-                    console.print(f"[dim]✓ Türkçe font yüklendi: {Path(config['normal']).name}[/dim]")
-                    break
-
-                except Exception as e:
-                    console.print(f"[yellow]⚠ Font yükleme hatası: {e}[/yellow]")
-                    continue
-
-        if not font_registered:
-            console.print("[yellow]⚠ Türkçe destekli font bulunamadı, Helvetica kullanılacak[/yellow]")
-            console.print("[yellow]  Türkçe karakterler düzgün görüntülenmeyebilir[/yellow]")
-
-        return font_registered
     except Exception as e:
-        console.print(f"[red]✗ Font sistemi hatası: {e}[/red]")
+        console.print(f"[red]✗ Font yükleme hatası: {e}[/red]")
         return False
 
 def find_column_indices(header: List[Any], column_mapping: Dict[str, List[str]]) -> Dict[str, int]:
@@ -598,13 +560,14 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     # Türkçe font desteği için font adını belirle
     try:
         registered_fonts = pdfmetrics.getRegisteredFontNames()
-        if 'CustomFont' in registered_fonts:
-            font_name = 'CustomFont'
-            font_name_bold = 'CustomFont-Bold' if 'CustomFont-Bold' in registered_fonts else 'CustomFont'
+        if 'DejaVuSans' in registered_fonts:
+            font_name = 'DejaVuSans'
+            font_name_bold = 'DejaVuSans-Bold'
         else:
             # Fallback to Helvetica (Türkçe karakterler düzgün görüntülenmeyebilir)
             font_name = 'Helvetica'
             font_name_bold = 'Helvetica-Bold'
+            console.print("[yellow]⚠ DejaVu Sans yüklenmedi, Helvetica kullanılıyor[/yellow]")
     except:
         font_name = 'Helvetica'
         font_name_bold = 'Helvetica-Bold'
