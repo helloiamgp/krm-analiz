@@ -1,0 +1,51 @@
+╔══════════════════════════════════════════════════════════╗
+║          KRM RAPOR ANALİZ ARACI - KULLANIM              ║
+╚══════════════════════════════════════════════════════════╝
+
+🚀 HIZLI BAŞLANGIÇ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ İLK KURULUM (Tek sefer):
+
+   Terminal'i açın ve şu komutu çalıştırın:
+
+   pip3 install --break-system-packages pdfplumber reportlab rich
+
+2️⃣ KULLANIM:
+
+   📄 Tek PDF analiz etmek için:
+
+   python3 krm.py "AK FAKTORİNG A.Ş. - KRM.pdf"
+
+   📚 Dizindeki TÜM PDF'leri analiz etmek için:
+
+   python3 krm.py
+
+3️⃣ SONUÇ:
+
+   ✅ Terminal'de renkli özet göreceksiniz
+   ✅ output/ klasöründe PDF rapor oluşur
+   ✅ Türkçe karakterler tam destek!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 NOTLAR:
+
+   • Fontlar projeye dahil (fonts/ klasörü)
+   • İnternet bağlantısına gerek yok
+   • macOS / Linux / Windows uyumlu
+   • Sistem Python (3.9+) yeterli
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❓ SORUN GİDERME:
+
+   Hata: "ModuleNotFoundError: No module named 'pdfplumber'"
+   Çözüm: Adım 1'i tekrar yapın (pip3 install...)
+
+   Hata: "error: externally-managed-environment"
+   Çözüm: Komuta --break-system-packages ekleyin
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GitHub: https://github.com/helloiamgp/krm-analiz
