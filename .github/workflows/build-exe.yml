@@ -6,6 +6,9 @@ on:
       - 'v*'  # v1.0, v2.1 gibi tag'lerde çalışır
   workflow_dispatch:  # Manuel tetikleme
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
