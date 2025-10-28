@@ -25,24 +25,20 @@ pip install pdfplumber reportlab rich
 
 ## 🚀 Kurulum ve Kullanım
 
-### Seçenek 1: Windows EXE Dosyası (ÖNERİLEN - Son Kullanıcılar İçin)
+### Seçenek 1: Windows EXE Dosyası (ÖNERİLEN)
 
 **⚡ Hızlı Başlangıç:**
-1. [Releases](https://github.com/helloiamgp/krm-analiz/releases) sayfasından **KRM-Analiz.exe** dosyasını indirin
+1. [Releases](https://github.com/helloiamgp/krm-analiz/releases/latest) sayfasından **KRM-Analiz.exe** indirin
 2. İstediğiniz klasöre kopyalayın
-3. KRM PDF dosyalarınızı aynı klasöre koyun
-4. **KRM-Analiz.exe** dosyasını çift tıklayın
-5. Raporlar **output/** klasöründe oluşur
+3. PDF dosyalarınızı aynı klasöre koyun
+4. **Çift tıklayın** → Hazır!
 
 **Avantajlar:**
-- ✅ **Hiçbir kurulum gerektirmez**
+- ✅ Hiçbir kurulum gerektirmez
 - ✅ Python bilgisi gerektirmez
 - ✅ Çift tıklama ile çalışır
-- ✅ 30 saniyede başlayın
 
-**💡 Not:** İlk çalıştırmada Windows Defender/SmartScreen uyarısı alabilirsiniz. "Yine de çalıştır" seçeneğini tıklayın. PyInstaller ile oluşturulan exe dosyaları bazen false-positive tetikler.
-
-### Seçenek 2: Python Script (Gelişmiş Yöntem)
+### Seçenek 2: Python Script
 
 **Kurulum (İlk Seferinde):**
 ```bash

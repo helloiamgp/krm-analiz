@@ -1,4 +1,12 @@
-# Release Notes
+# KRM Analiz Aracı - Sürüm Notları
+
+## 📥 İndirme
+
+**Windows Kullanıcıları:**
+- [KRM-Analiz.exe](https://github.com/helloiamgp/krm-analiz/releases/latest) dosyasını indirin
+- Çift tıklayın ve kullanmaya başlayın
+
+---
 
 ## v1.0.0 - İlk Sürüm (27 Ekim 2025)
 
