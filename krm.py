@@ -1028,4 +1028,14 @@ def main() -> None:
         console.print("\n[bold green]🎉 Tüm aktif kaynaklar temiz![/bold green]")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        console.print(f"\n[bold red]HATA:[/bold red] {str(e)}")
+        console.print("\n[yellow]Detaylar:[/yellow]")
+        import traceback
+        console.print(traceback.format_exc())
+    finally:
+        # EXE'de hızla kapanmasını engelle
+        console.print("\n[dim]Çıkmak için Enter tuşuna basın...[/dim]")
+        input()
