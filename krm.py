@@ -51,15 +51,31 @@ def register_fonts() -> bool:
     from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
     try:
-        # Proje içindeki fonts dizini
-        font_dir = Path(__file__).parent / "fonts"
+        # PyInstaller uyumluluğu için font dizinini bul
+        if getattr(sys, 'frozen', False):
+            # EXE olarak çalışıyorsa
+            base_dir = Path(sys._MEIPASS)  # PyInstaller geçici dizini
+            console.print(f"[dim]🔤 Font aranıyor (EXE modu): {base_dir}[/dim]")
+        else:
+            # Python script olarak çalışıyorsa
+            base_dir = Path(__file__).parent
+            console.print(f"[dim]🔤 Font aranıyor (Script modu): {base_dir}[/dim]")
 
+        font_dir = base_dir / "fonts"
         font_normal = font_dir / "DejaVuSans.ttf"
         font_bold = font_dir / "DejaVuSans-Bold.ttf"
+
+        console.print(f"[cyan]📁 Font dizini:[/cyan] {font_dir}")
 
         if not font_normal.exists():
             console.print(f"[red]✗ Font bulunamadı: {font_normal}[/red]")
             console.print(f"[yellow]  Lütfen DejaVu fontlarını fonts/ dizinine yerleştirin[/yellow]")
+            console.print(f"[dim]  Font dizinindeki dosyalar:[/dim]")
+            try:
+                for f in font_dir.iterdir():
+                    console.print(f"    → {f.name}")
+            except:
+                console.print(f"    [red]Dizin bulunamadı![/red]")
             return False
 
         # Normal font kaydı
@@ -124,7 +140,15 @@ def ensure_output_dir() -> Path:
     Returns:
         Output dizininin Path objesi
     """
-    output_dir = Path(__file__).parent / "output"
+    # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
+    if getattr(sys, 'frozen', False):
+        # EXE olarak çalışıyorsa
+        base_dir = Path(sys.executable).parent
+    else:
+        # Python script olarak çalışıyorsa
+        base_dir = Path(__file__).parent
+
+    output_dir = base_dir / "output"
     output_dir.mkdir(exist_ok=True)
     return output_dir
 
@@ -135,8 +159,29 @@ def find_pdfs() -> List[Path]:
     Returns:
         Sıralı PDF dosya Path listesi
     """
-    current_dir = Path(__file__).parent
+    # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
+    if getattr(sys, 'frozen', False):
+        # EXE olarak çalışıyorsa
+        current_dir = Path(sys.executable).parent
+        console.print(f"[dim]🔍 EXE modu: {current_dir}[/dim]")
+    else:
+        # Python script olarak çalışıyorsa
+        current_dir = Path(__file__).parent
+        console.print(f"[dim]🔍 Script modu: {current_dir}[/dim]")
+
+    console.print(f"[cyan]📂 PDF aranıyor:[/cyan] {current_dir}")
+
     pdfs = list(current_dir.glob("*.pdf"))
+
+    if pdfs:
+        console.print(f"[green]✓ {len(pdfs)} adet PDF bulundu:[/green]")
+        for pdf in pdfs:
+            console.print(f"  [dim]→ {pdf.name}[/dim]")
+    else:
+        console.print(f"[yellow]⚠ Hiçbir PDF bulunamadı![/yellow]")
+        console.print(f"[dim]Lütfen PDF dosyalarını şu dizine koyun:[/dim]")
+        console.print(f"[cyan]{current_dir}[/cyan]")
+
     return sorted(pdfs)
 
 def parse_header(pdf: pdfplumber.PDF) -> Tuple[str, str]:
