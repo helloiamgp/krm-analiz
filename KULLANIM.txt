@@ -140,6 +140,9 @@
 📌 VERSİYON: v3.1 (Kasım 2024)
 
    Yeni Özellikler:
+   🎨 İnteraktif progress bar'lar
+   🎨 Real-time ilerleme göstergesi
+   🎨 Kalan süre tahmini
    🔒 PDF güvenlik validation
    🔒 Path traversal koruması
    🔒 Dosya boyutu limiti

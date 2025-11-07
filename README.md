@@ -4,11 +4,17 @@ Türkiye Bankalar Birliği (TBB) KRM raporlarını otomatik olarak analiz eden, 
 
 ## 🎯 Özellikler
 
-### 📁 Klasör Bazlı Analiz (v3 YENİ!)
+### 📁 Klasör Bazlı Analiz
 - ✅ **Alt Klasör Tarama**: Otomatik olarak tüm alt klasörleri tarar
 - ✅ **Firma Bazlı Organizasyon**: Her firma/dönem için ayrı klasör
 - ✅ **Otomatik Findeks Eşleştirme**: Her klasördeki KRM ile Findeks raporu eşleştirilir
 - ✅ **Klasör Bazlı Raporlama**: Her klasörün kendi output/ dizini
+
+### 🎨 İnteraktif CLI Arayüzü (v3.1 YENİ!)
+- ✅ **Progress Bars**: Real-time ilerleme göstergeleri
+- ✅ **Spinner Animasyonları**: İşlem sırasında görsel feedback
+- ✅ **Kalan Süre Tahmini**: Ne kadar bekleneceği bilgisi
+- ✅ **Klasör/PDF Seviyesinde Tracking**: Her adım takip edilir
 
 ### 🔍 Analiz Özellikleri
 - ✅ **PDF Parsing**: KRM PDF raporlarından limit ve risk bilgilerini otomatik çıkarma
@@ -137,7 +143,7 @@ python3 krm.py
 
 ```
 ╔══════════════════════════════════════════════════════════╗
-║     KRM Rapor Analiz Aracı v3                           ║
+║     KRM Rapor Analiz Aracı v3.1                         ║
 ║     Klasör bazlı analiz, Findeks eşleştirmesi           ║
 ╚══════════════════════════════════════════════════════════╝
 
@@ -149,24 +155,20 @@ python3 krm.py
   Findeks: 1 adet
     → FindeksRapor.pdf
 
-✓ Firma_B/
-  KRM: 1 adet
-    → XYZ_KRM.pdf
-
 ════════════════════════════════════════════════════════════
 Toplam 2 klasör işlenecek
+
+⠋ 📂 Klasörler işleniyor... ████████████░░░░ 50% • 0:00:15
+  ↳ PARAFİNANS_KRM.pdf... ████████████ 100%
 
 ════════════════════════════════════════════════════════════
 KLASÖR 1/2: Firma_A
 ════════════════════════════════════════════════════════════
 
-📂 Output: Firma_A/output/
 🔗 Findeks: FindeksRapor.pdf
-
-Analiz ediliyor (1/1): PARAFİNANS_KRM.pdf
+    ✓ PARAFİNANS_KRM.pdf
 🔗 Findeks eşleştirmesi yapılıyor...
 ✓ 8 eşleştirme bulundu
-✓ PDF kaydedildi: output/PARAFİNANS_KRM.pdf
 
 📊 Firma_A - Özet:
   Toplam Kaynak: 12
@@ -379,6 +381,10 @@ Sorularınız için GitHub Issues kullanabilirsiniz.
 ## 🔄 Versiyon Geçmişi
 
 ### v3.1 (Kasım 2024)
+- 🎨 İnteraktif progress bar'lar eklendi
+- 🎨 Real-time ilerleme göstergeleri
+- 🎨 Spinner animasyonları
+- 🎨 Kalan süre tahmini
 - 🔒 PDF güvenlik validation eklendi
 - 🔒 Path traversal koruması
 - 🔒 Dosya boyutu limiti (DOS koruması)

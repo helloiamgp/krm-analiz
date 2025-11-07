@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.progress import track
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 # ReportLab imports
 from reportlab.lib import colors
@@ -1521,52 +1521,91 @@ def main() -> None:
     # Her klasör için analiz yap
     all_results = []
 
-    for folder_idx, (folder, pdfs_dict) in enumerate(folders_with_reports.items(), 1):
-        console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
-        console.print(f"[bold]KLASÖR {folder_idx}/{len(folders_with_reports)}: {folder.name}[/bold]")
-        console.print(f"[bold cyan]{'='*80}[/bold cyan]\n")
+    # Progress bar ile analiz
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(complete_style="green", finished_style="bold green"),
+        TaskProgressColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+        console=console,
+        transient=False
+    ) as progress:
 
-        # Bu klasör için output dizini oluştur
-        output_dir = ensure_output_dir(folder)
-        console.print(f"[dim]📂 Output: {output_dir}[/dim]\n")
+        # Ana klasör progress task'ı
+        folder_task = progress.add_task(
+            "[cyan]📂 Klasörler işleniyor...",
+            total=len(folders_with_reports)
+        )
 
-        # Bu klasördeki Findeks raporunu seç (varsa ilkini al)
-        findeks_pdf = pdfs_dict['findeks'][0] if pdfs_dict['findeks'] else None
+        for folder_idx, (folder, pdfs_dict) in enumerate(folders_with_reports.items(), 1):
+            # Klasör bilgisi göster
+            progress.console.print(f"\n[bold cyan]{'='*60}[/bold cyan]")
+            progress.console.print(f"[bold]KLASÖR {folder_idx}/{len(folders_with_reports)}: {folder.name}[/bold]")
+            progress.console.print(f"[bold cyan]{'='*60}[/bold cyan]")
 
-        if findeks_pdf:
-            console.print(f"[cyan]🔗 Findeks:[/cyan] {findeks_pdf.name}")
-        else:
-            console.print("[dim]📝 Findeks raporu yok, eşleştirme atlanacak[/dim]")
+            # Bu klasör için output dizini oluştur
+            output_dir = ensure_output_dir(folder)
 
-        console.print()
+            # Bu klasördeki Findeks raporunu seç (varsa ilkini al)
+            findeks_pdf = pdfs_dict['findeks'][0] if pdfs_dict['findeks'] else None
 
-        # Bu klasördeki her KRM raporunu analiz et
-        folder_results = []
-        krm_pdfs = pdfs_dict['krm']
-
-        for pdf_idx, krm_pdf in enumerate(krm_pdfs, 1):
-            console.print(f"[yellow]Analiz ediliyor ({pdf_idx}/{len(krm_pdfs)}): {krm_pdf.name}[/yellow]")
-
-            result = analyze_report(krm_pdf, findeks_pdf)
-            folder_results.append(result)
-            all_results.append({
-                'folder': folder.name,
-                'result': result
-            })
-
-            if result['success']:
-                pdf_output = generate_pdf(result, output_dir)
-                console.print(f"[green]✓ PDF kaydedildi:[/green] {pdf_output.relative_to(folder)}")
+            if findeks_pdf:
+                progress.console.print(f"[cyan]🔗 Findeks:[/cyan] {findeks_pdf.name}")
             else:
-                console.print(f"[red]✗ Hata:[/red] {result.get('error', 'Bilinmeyen hata')}")
+                progress.console.print("[dim]📝 Findeks raporu yok[/dim]")
 
-            console.print()
+            progress.console.print()
 
-        # Bu klasör için özet
-        console.print(f"[bold]📊 {folder.name} - Özet:[/bold]")
-        for result in folder_results:
-            if result['success']:
-                print_single_report(result)
+            # Bu klasördeki her KRM raporunu analiz et
+            folder_results = []
+            krm_pdfs = pdfs_dict['krm']
+
+            # PDF progress task'ı (her klasör için yeni)
+            pdf_task = progress.add_task(
+                f"[yellow]  ↳ PDF'ler işleniyor...",
+                total=len(krm_pdfs)
+            )
+
+            for pdf_idx, krm_pdf in enumerate(krm_pdfs, 1):
+                # Mevcut PDF'i göster
+                progress.update(
+                    pdf_task,
+                    description=f"[yellow]  ↳ {krm_pdf.name[:40]}..."
+                )
+
+                result = analyze_report(krm_pdf, findeks_pdf)
+                folder_results.append(result)
+                all_results.append({
+                    'folder': folder.name,
+                    'result': result
+                })
+
+                if result['success']:
+                    pdf_output = generate_pdf(result, output_dir)
+                    progress.console.print(f"    [green]✓ {krm_pdf.name}[/green]")
+                else:
+                    progress.console.print(f"    [red]✗ {krm_pdf.name}: {result.get('error', 'Hata')}[/red]")
+
+                # PDF progress'i güncelle
+                progress.update(pdf_task, advance=1)
+
+            # PDF task'ı tamamla ve gizle
+            progress.update(pdf_task, visible=False)
+            progress.remove_task(pdf_task)
+
+            # Bu klasör için özet
+            progress.console.print(f"\n[bold]📊 {folder.name} - Özet:[/bold]")
+            for result in folder_results:
+                if result['success']:
+                    print_single_report(result)
+
+            # Klasör progress'i güncelle
+            progress.update(folder_task, advance=1)
+
+        # Ana task tamamlandı
+        progress.update(folder_task, description="[bold green]✓ Tüm klasörler tamamlandı!")
 
     # Genel özet
     console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
