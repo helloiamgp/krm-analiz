@@ -1,5 +1,6 @@
 ╔══════════════════════════════════════════════════════════╗
-║          KRM RAPOR ANALİZ ARACI - KULLANIM              ║
+║       KRM RAPOR ANALİZ ARACI v3 - KULLANIM              ║
+║       Klasör Bazlı Analiz + Findeks Eşleştirme          ║
 ╚══════════════════════════════════════════════════════════╝
 
 🚀 HIZLI BAŞLANGIÇ
@@ -9,32 +10,78 @@
 
    Terminal'i açın ve şu komutu çalıştırın:
 
-   pip3 install --break-system-packages pdfplumber reportlab rich
+   pip3 install --break-system-packages pdfplumber reportlab rich PyMuPDF pytesseract Pillow
 
-2️⃣ KULLANIM:
+   📝 Not: PyMuPDF, pytesseract, Pillow → Findeks eşleştirme için gerekli
 
-   📄 Tek PDF analiz etmek için:
+2️⃣ KLASÖR YAPISINIZI HAZIRLAYIN:
 
-   python3 krm.py "AK FAKTORİNG A.Ş. - KRM.pdf"
+   /Ana_Dizin/
+     ├── krm.py
+     ├── fonts/
+     ├── Firma_A/
+     │   ├── KRM_2024.pdf
+     │   └── Findeks_2024.pdf
+     └── Firma_B/
+         └── XYZ_KRM.pdf
 
-   📚 Dizindeki TÜM PDF'leri analiz etmek için:
+   💡 İpucu:
+   - Her firma/dönem için ayrı klasör oluşturun
+   - KRM PDF'lerinin isminde "KRM" geçmeli
+   - Findeks PDF'lerinin isminde "Findeks" geçmeli
+
+3️⃣ KULLANIM:
+
+   📚 Tüm klasörleri analiz etmek için:
 
    python3 krm.py
 
-3️⃣ SONUÇ:
+   Program otomatik olarak:
+   ✅ Alt klasörleri tarar
+   ✅ Her klasördeki KRM ve Findeks PDF'leri bulur
+   ✅ KRM-Findeks eşleştirmesi yapar
+   ✅ Her klasöre output/ dizini oluşturur
+   ✅ Analiz raporlarını kaydeder
 
-   ✅ Terminal'de renkli özet göreceksiniz
-   ✅ output/ klasöründe PDF rapor oluşur
+4️⃣ SONUÇ:
+
+   ✅ Terminal'de klasör bazlı renkli özet
+   ✅ Her klasörde output/ dizininde PDF rapor
+   ✅ Findeks eşleştirme sonuçları raporda
    ✅ Türkçe karakterler tam destek!
+
+   Örnek:
+   Firma_A/
+     ├── KRM_2024.pdf
+     ├── Findeks_2024.pdf
+     └── output/
+         └── KRM_2024.pdf  ← Oluşturulan rapor
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📋 NOTLAR:
+📋 ÖNEMLİ NOTLAR:
 
    • Fontlar projeye dahil (fonts/ klasörü)
+   • OCR için Tesseract gerekli (Findeks için)
    • İnternet bağlantısına gerek yok
    • macOS / Linux / Windows uyumlu
    • Sistem Python (3.9+) yeterli
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 OCR KURULUMU (Findeks Eşleştirme İçin):
+
+   macOS:
+   brew install tesseract
+
+   Ubuntu/Debian:
+   sudo apt-get install tesseract-ocr
+
+   Windows:
+   https://github.com/UB-Mannheim/tesseract/wiki
+   adresinden indirin
+
+   📝 OCR yoksa: Findeks eşleştirme atlanır, program çalışır
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -46,6 +93,54 @@
    Hata: "error: externally-managed-environment"
    Çözüm: Komuta --break-system-packages ekleyin
 
+   Hata: "pytesseract not found"
+   Çözüm: Tesseract OCR'ı kurun (yukarıya bakın)
+         veya Findeks olmadan çalıştırın
+
+   Klasör bulunamadı hatası:
+   Çözüm: Alt klasör oluşturun ve içine KRM PDF koyun
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-GitHub: https://github.com/helloiamgp/krm-analiz
+💡 İPUÇLARI:
+
+   ✅ Her firma için ayrı klasör oluşturun
+   ✅ Findeks raporu varsa aynı klasöre koyun
+   ✅ Klasör isimleri serbestçe verilebilir
+   ✅ Tek seferde onlarca klasör işlenebilir
+   ✅ Geçmiş analizleri output/ klasöründe saklayın
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 PROGRAM ÇIKTISI:
+
+   Terminal'de:
+   - Her klasör için ayrı özet
+   - KRM-Findeks eşleştirme sonuçları
+   - Kritik sorunlar ve uyarılar
+   - Genel toplam istatistikler
+
+   PDF Raporunda:
+   - Özet istatistikler
+   - Pasif kaynaklar tablosu
+   - Kritik sorunlar (kırmızı)
+   - Uyarılar (sarı)
+   - Detaylı aktif kaynak bilgileri
+   - Findeks eşleştirmeleri (✅ YENİ!)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 BAĞLANTILAR:
+
+   GitHub: https://github.com/helloiamgp/krm-analiz
+   Releases: https://github.com/helloiamgp/krm-analiz/releases
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 VERSİYON: v3.0 (Kasım 2024)
+
+   Yeni Özellikler:
+   ✨ Klasör bazlı analiz sistemi
+   ✨ Otomatik Findeks eşleştirme
+   ✨ OCR desteği (banka ismi okuma)
+   ✨ Her klasör için ayrı output

@@ -32,6 +32,10 @@ env/
 # Test files
 test_*.py
 test_*.pdf
+test_*/
+test_firma*/
+*_test/
+example_*/
 
 # IDE
 .vscode/
