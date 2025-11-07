@@ -135,58 +135,85 @@ def find_column_indices(header: List[Any], column_mapping: Dict[str, List[str]])
                 break
     return indices
 
-def ensure_output_dir() -> Path:
+def ensure_output_dir(base_dir: Optional[Path] = None) -> Path:
     """
     Output dizinini oluştur.
+
+    Args:
+        base_dir: Output dizini oluşturulacak ana dizin (opsiyonel)
 
     Returns:
         Output dizininin Path objesi
     """
-    # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
-    if getattr(sys, 'frozen', False):
-        # EXE olarak çalışıyorsa
-        base_dir = Path(sys.executable).parent
-    else:
-        # Python script olarak çalışıyorsa
-        base_dir = Path(__file__).parent
+    if base_dir is None:
+        # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
+        if getattr(sys, 'frozen', False):
+            # EXE olarak çalışıyorsa
+            base_dir = Path(sys.executable).parent
+        else:
+            # Python script olarak çalışıyorsa
+            base_dir = Path(__file__).parent
 
     output_dir = base_dir / "output"
     output_dir.mkdir(exist_ok=True)
     return output_dir
 
-def find_pdfs() -> List[Path]:
+def find_folders_with_reports() -> Dict[Path, Dict[str, List[Path]]]:
     """
-    Mevcut dizindeki KRM PDF dosyalarını bul.
+    Alt klasörlerdeki KRM ve Findeks PDF dosyalarını bul.
 
     Returns:
-        Sıralı KRM PDF dosya Path listesi
+        Dict[klasör_path, {'krm': [pdf_list], 'findeks': [pdf_list]}]
     """
     # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
     if getattr(sys, 'frozen', False):
-        # EXE olarak çalışıyorsa
-        current_dir = Path(sys.executable).parent
-        console.print(f"[dim]🔍 EXE modu: {current_dir}[/dim]")
+        base_dir = Path(sys.executable).parent
+        console.print(f"[dim]🔍 EXE modu: {base_dir}[/dim]")
     else:
-        # Python script olarak çalışıyorsa
-        current_dir = Path(__file__).parent
-        console.print(f"[dim]🔍 Script modu: {current_dir}[/dim]")
+        base_dir = Path(__file__).parent
+        console.print(f"[dim]🔍 Script modu: {base_dir}[/dim]")
 
-    console.print(f"[cyan]📂 KRM PDF aranıyor:[/cyan] {current_dir}")
+    console.print(f"[cyan]📂 Alt klasörler taranıyor:[/cyan] {base_dir}\n")
 
-    # Sadece isimde "KRM" geçen PDF'leri al
-    all_pdfs = list(current_dir.glob("*.pdf"))
-    pdfs = [pdf for pdf in all_pdfs if 'KRM' in pdf.name or 'krm' in pdf.name]
+    folders_with_reports = {}
 
-    if pdfs:
-        console.print(f"[green]✓ {len(pdfs)} adet KRM PDF bulundu:[/green]")
-        for pdf in pdfs:
-            console.print(f"  [dim]→ {pdf.name}[/dim]")
-    else:
-        console.print(f"[yellow]⚠ Hiçbir KRM PDF bulunamadı![/yellow]")
-        console.print(f"[dim]Lütfen isimde 'KRM' geçen PDF dosyalarını şu dizine koyun:[/dim]")
-        console.print(f"[cyan]{current_dir}[/cyan]")
+    # Alt klasörleri tara
+    for folder in base_dir.iterdir():
+        if not folder.is_dir():
+            continue
 
-    return sorted(pdfs)
+        # output, fonts, .git gibi sistem klasörlerini atla
+        if folder.name.startswith('.') or folder.name in ['output', 'fonts', '__pycache__']:
+            continue
+
+        # Bu klasördeki PDF'leri bul
+        all_pdfs = list(folder.glob("*.pdf"))
+
+        krm_pdfs = [pdf for pdf in all_pdfs if 'KRM' in pdf.name or 'krm' in pdf.name]
+        findeks_pdfs = [pdf for pdf in all_pdfs if 'Findeks' in pdf.name or 'findeks' in pdf.name or 'FİNDEKS' in pdf.name]
+
+        # En azından bir KRM varsa bu klasörü kaydet
+        if krm_pdfs:
+            folders_with_reports[folder] = {
+                'krm': sorted(krm_pdfs),
+                'findeks': sorted(findeks_pdfs)
+            }
+
+            console.print(f"[green]✓ {folder.name}/[/green]")
+            console.print(f"  [cyan]KRM:[/cyan] {len(krm_pdfs)} adet")
+            for pdf in krm_pdfs:
+                console.print(f"    → {pdf.name}")
+            if findeks_pdfs:
+                console.print(f"  [yellow]Findeks:[/yellow] {len(findeks_pdfs)} adet")
+                for pdf in findeks_pdfs:
+                    console.print(f"    → {pdf.name}")
+            console.print()
+
+    if not folders_with_reports:
+        console.print("[yellow]⚠ Hiçbir klasörde KRM PDF bulunamadı![/yellow]")
+        console.print("[dim]Alt klasörler oluşturun ve içine KRM PDF'leri yerleştirin.[/dim]")
+
+    return folders_with_reports
 
 def parse_header(pdf: pdfplumber.PDF) -> Tuple[str, str]:
     """
@@ -1308,86 +1335,103 @@ def main() -> None:
     """
     Ana program fonksiyonu.
 
-    Komut satırı argümanlarını parse eder ve PDF analiz işlemini başlatır.
+    Alt klasörleri tarar, her klasördeki KRM ve Findeks raporlarını analiz eder.
     """
     console.print(Panel.fit(
-        "[bold cyan]KRM Rapor Analiz Aracı v2[/bold cyan]\n"
+        "[bold cyan]KRM Rapor Analiz Aracı v3[/bold cyan]\n"
         f"Tarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-        "[dim]PDF raporlama, pasif kaynak tespiti ve Findeks eşleştirmesi[/dim]",
+        "[dim]Klasör bazlı analiz, Findeks eşleştirmesi, PDF raporlama[/dim]",
         border_style="cyan"
     ))
 
     # Türkçe font desteğini aktifleştir
     register_fonts()
 
-    output_dir = ensure_output_dir()
+    # Alt klasörlerdeki raporları bul
+    folders_with_reports = find_folders_with_reports()
 
-    # Findeks raporunu ara (çalışma dizininde)
-    if getattr(sys, 'frozen', False):
-        work_dir = Path(sys.executable).parent
-    else:
-        work_dir = Path(__file__).parent
-
-    findeks_pdf = None
-    findeks_candidates = list(work_dir.glob("*Findeks*.pdf")) + list(work_dir.glob("*findeks*.pdf"))
-    if findeks_candidates:
-        findeks_pdf = findeks_candidates[0]
-        console.print(f"[cyan]🔗 Findeks raporu bulundu:[/cyan] {findeks_pdf.name}")
-    else:
-        console.print("[dim]📝 Findeks raporu bulunamadı, eşleştirme atlanıyor[/dim]")
-
-    if len(sys.argv) > 1:
-        pdf_path = Path(sys.argv[1])
-        if not pdf_path.exists():
-            console.print(f"[red]Hata:[/red] {pdf_path} bulunamadi!")
-            return
-
-        console.print(f"\n[yellow]Analiz ediliyor: {pdf_path.name}[/yellow]")
-        result = analyze_report(pdf_path, findeks_pdf)
-
-        if result['success']:
-            pdf_output = generate_pdf(result, output_dir)
-            console.print(f"[green]✓[/green] PDF kaydedildi: {pdf_output}")
-
-        print_single_report(result)
+    if not folders_with_reports:
+        console.print("[red]✗ Analiz edilecek klasör bulunamadı![/red]")
         return
 
-    pdfs = find_pdfs()
+    console.print(f"[bold cyan]{'='*80}[/bold cyan]")
+    console.print(f"[bold]Toplam {len(folders_with_reports)} klasör işlenecek[/bold]\n")
 
-    if not pdfs:
-        console.print("[yellow]Bu dizinde PDF dosyasi bulunamadi![/yellow]")
-        return
+    # Her klasör için analiz yap
+    all_results = []
 
-    console.print(f"\n[green]✓[/green] {len(pdfs)} adet PDF bulundu\n")
+    for folder_idx, (folder, pdfs_dict) in enumerate(folders_with_reports.items(), 1):
+        console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
+        console.print(f"[bold]KLASÖR {folder_idx}/{len(folders_with_reports)}: {folder.name}[/bold]")
+        console.print(f"[bold cyan]{'='*80}[/bold cyan]\n")
 
-    results = []
-    for pdf_path in track(pdfs, description="Analiz ediliyor..."):
-        result = analyze_report(pdf_path, findeks_pdf)
-        results.append(result)
+        # Bu klasör için output dizini oluştur
+        output_dir = ensure_output_dir(folder)
+        console.print(f"[dim]📂 Output: {output_dir}[/dim]\n")
 
-        if result['success']:
-            pdf_output = generate_pdf(result, output_dir)
+        # Bu klasördeki Findeks raporunu seç (varsa ilkini al)
+        findeks_pdf = pdfs_dict['findeks'][0] if pdfs_dict['findeks'] else None
 
-    for result in results:
-        print_single_report(result)
+        if findeks_pdf:
+            console.print(f"[cyan]🔗 Findeks:[/cyan] {findeks_pdf.name}")
+        else:
+            console.print("[dim]📝 Findeks raporu yok, eşleştirme atlanacak[/dim]")
 
+        console.print()
+
+        # Bu klasördeki her KRM raporunu analiz et
+        folder_results = []
+        krm_pdfs = pdfs_dict['krm']
+
+        for pdf_idx, krm_pdf in enumerate(krm_pdfs, 1):
+            console.print(f"[yellow]Analiz ediliyor ({pdf_idx}/{len(krm_pdfs)}): {krm_pdf.name}[/yellow]")
+
+            result = analyze_report(krm_pdf, findeks_pdf)
+            folder_results.append(result)
+            all_results.append({
+                'folder': folder.name,
+                'result': result
+            })
+
+            if result['success']:
+                pdf_output = generate_pdf(result, output_dir)
+                console.print(f"[green]✓ PDF kaydedildi:[/green] {pdf_output.relative_to(folder)}")
+            else:
+                console.print(f"[red]✗ Hata:[/red] {result.get('error', 'Bilinmeyen hata')}")
+
+            console.print()
+
+        # Bu klasör için özet
+        console.print(f"[bold]📊 {folder.name} - Özet:[/bold]")
+        for result in folder_results:
+            if result['success']:
+                print_single_report(result)
+
+    # Genel özet
     console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
-    console.print(f"[bold]GENEL ÖZET[/bold]")
+    console.print(f"[bold]GENEL ÖZET - TÜM KLASÖRLER[/bold]")
+    console.print(f"[bold cyan]{'='*80}[/bold cyan]\n")
 
-    total_active = sum(len(r['active_sources']) for r in results if r['success'])
-    total_passive = sum(len(r['passive_sources']) for r in results if r['success'])
-    total_critical = sum(len([a for a in r['anomalies'] if a['severity'] == 'CRITICAL']) for r in results if r['success'])
-    total_warnings = sum(len([a for a in r['anomalies'] if a['severity'] == 'WARNING']) for r in results if r['success'])
+    successful_results = [r['result'] for r in all_results if r['result']['success']]
 
-    console.print(f"Analiz Edilen Rapor: {len(results)}")
+    total_folders = len(folders_with_reports)
+    total_reports = len(all_results)
+    total_active = sum(len(r['active_sources']) for r in successful_results)
+    total_passive = sum(len(r['passive_sources']) for r in successful_results)
+    total_critical = sum(len([a for a in r['anomalies'] if a['severity'] == 'CRITICAL']) for r in successful_results)
+    total_warnings = sum(len([a for a in r['anomalies'] if a['severity'] == 'WARNING']) for r in successful_results)
+
+    console.print(f"İşlenen Klasör Sayısı: [cyan]{total_folders}[/cyan]")
+    console.print(f"Analiz Edilen Rapor: [cyan]{total_reports}[/cyan]")
     console.print(f"Toplam Aktif Kaynak: [green]{total_active}[/green]")
     console.print(f"Toplam Pasif Kaynak: [dim]{total_passive}[/dim]")
     console.print(f"Toplam Kritik Sorun: [red]{total_critical}[/red]")
     console.print(f"Toplam Uyarı: [yellow]{total_warnings}[/yellow]")
-    console.print(f"\n[green]✓[/green] PDF raporlar kaydedildi: {output_dir}/")
 
     if total_critical == 0 and total_warnings == 0:
-        console.print("\n[bold green]🎉 Tüm aktif kaynaklar temiz![/bold green]")
+        console.print("\n[bold green]🎉 Tüm raporlar temiz![/bold green]")
+
+    console.print(f"\n[green]✓ Tüm PDF raporlar ilgili klasörlerdeki output/ dizinlerine kaydedildi[/green]")
 
 if __name__ == "__main__":
     try:
