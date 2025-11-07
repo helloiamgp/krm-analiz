@@ -15,6 +15,7 @@ Türkiye Bankalar Birliği (TBB) KRM raporlarını otomatik olarak analiz eden, 
 - ✅ **OCR Desteği**: Findeks raporlarından banka isimlerini okur (PyMuPDF + Tesseract)
 - ✅ **Akıllı Eşleştirme**: KRM kaynakları ile Findeks kurumlarını %15 toleransla eşleştirir
 - 🔍 **Anomali Tespiti**: 6 farklı risk senaryosunu otomatik tespit eder
+- 🔒 **Güvenlik Kontrolleri**: PDF validation, path traversal koruması, dosya boyutu limiti
   - Nakdi limit aşımı (WARNING/CRITICAL)
   - Gayrinakdi limit aşımı (WARNING/CRITICAL)
   - Limitsiz kullanım (CRITICAL)
@@ -214,6 +215,37 @@ Toplam Uyarı: 2
    - Kullanım oranları
    - Zebra stripe formatı
 
+## 🔒 Güvenlik Özellikleri
+
+### PDF Güvenlik Kontrolleri
+```python
+# Otomatik güvenlik kontrolleri:
+✅ PDF magic number doğrulama (%PDF- header)
+✅ Dosya boyutu limiti (max 100 MB, DOS koruması)
+✅ Symlink dosyaları engelleme
+✅ Bozuk/sahte PDF tespiti
+✅ Boş veya geçersiz PDF kontrolü
+✅ Aşırı büyük PDF kontrolü (max 1000 sayfa)
+```
+
+### Path Traversal Koruması
+```python
+# Tehlikeli path örnekleri - otomatik engellenir:
+❌ ../../../etc/passwd
+❌ /sistem/dosya.pdf
+❌ Symlink manipülasyonu
+❌ Network share yolları
+
+✅ Sadece program dizini altındaki dosyalara erişim
+✅ Tüm dosya yolları güvenlik kontrolünden geçer
+```
+
+### Güvenli Kullanım
+- Program sadece kendi dizini ve alt klasörlerindeki dosyalara erişir
+- Geçersiz PDF'ler otomatik atlanır ve uyarı verilir
+- Tüm dosya işlemleri güvenlik kontrolünden geçer
+- Şüpheli dosyalar detaylı hata mesajı ile reddedilir
+
 ## 🔧 Teknik Detaylar
 
 ### Kod Kalitesi
@@ -345,6 +377,13 @@ Sorularınız için GitHub Issues kullanabilirsiniz.
 ---
 
 ## 🔄 Versiyon Geçmişi
+
+### v3.1 (Kasım 2024)
+- 🔒 PDF güvenlik validation eklendi
+- 🔒 Path traversal koruması
+- 🔒 Dosya boyutu limiti (DOS koruması)
+- 🔒 Symlink dosyaları engelleme
+- 🔒 Bozuk/sahte PDF tespiti
 
 ### v3.0 (Kasım 2024)
 - ✨ Klasör bazlı analiz sistemi

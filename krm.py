@@ -41,6 +41,162 @@ FINDEKS_MATCH_THRESHOLD = 0.15  # %15 tolerans
 
 console = Console()
 
+# ========================================
+# GÜVENLİK FONKSİYONLARI
+# ========================================
+
+def validate_pdf_file(file_path: Path, max_size_mb: int = 100) -> Tuple[bool, str]:
+    """
+    PDF dosyasını güvenlik kontrolünden geçir.
+
+    Args:
+        file_path: Kontrol edilecek PDF dosyası
+        max_size_mb: Maksimum dosya boyutu (MB)
+
+    Returns:
+        (is_valid, error_message) tuple'ı
+
+    Kontroller:
+        - Dosya var mı?
+        - Normal dosya mı? (symlink değil)
+        - Boyut limiti aşılmış mı?
+        - PDF uzantısı var mı?
+        - PDF header'ı geçerli mi? (%PDF-)
+        - pdfplumber ile açılabiliyor mu?
+    """
+    try:
+        # 1. Dosya var mı?
+        if not file_path.exists():
+            return False, f"Dosya bulunamadı"
+
+        # 2. Normal dosya mı? (symlink, directory değil)
+        if not file_path.is_file():
+            return False, f"Geçerli bir dosya değil"
+
+        # 3. Symlink kontrolü
+        if file_path.is_symlink():
+            return False, f"Symlink dosyalar güvenlik nedeniyle desteklenmiyor"
+
+        # 4. Boyut kontrolü (DOS ataklarına karşı)
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > max_size_mb:
+            return False, f"Dosya çok büyük ({file_size_mb:.1f} MB > {max_size_mb} MB)"
+
+        # 5. Boş dosya kontrolü
+        if file_size_mb < 0.001:  # 1 KB'den küçük
+            return False, f"Dosya çok küçük veya boş"
+
+        # 6. Uzantı kontrolü
+        if file_path.suffix.lower() != '.pdf':
+            return False, f"Sadece PDF dosyaları destekleniyor (.{file_path.suffix})"
+
+        # 7. PDF header kontrolü (%PDF-1.x)
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(8)
+                if not header.startswith(b'%PDF-'):
+                    return False, "Geçersiz PDF formatı (header kontrol)"
+        except Exception as e:
+            return False, f"Dosya okunamıyor: {e}"
+
+        # 8. pdfplumber ile açılabilirlik testi
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                if len(pdf.pages) == 0:
+                    return False, "PDF boş (sayfa yok)"
+
+                # Aşırı fazla sayfa kontrolü (DOS)
+                if len(pdf.pages) > 1000:
+                    return False, f"PDF çok fazla sayfa içeriyor ({len(pdf.pages)} > 1000)"
+        except Exception as e:
+            return False, f"PDF bozuk veya okunamıyor: {str(e)[:100]}"
+
+        return True, "OK"
+
+    except Exception as e:
+        return False, f"Beklenmeyen hata: {str(e)[:100]}"
+
+
+def is_safe_path(base_dir: Path, target_path: Path) -> bool:
+    """
+    Path traversal saldırılarına karşı koruma.
+
+    Args:
+        base_dir: Güvenli temel dizin
+        target_path: Kontrol edilecek hedef path
+
+    Returns:
+        Path güvenliyse True, değilse False
+
+    Örnek saldırılar:
+        - ../../../etc/passwd
+        - /etc/passwd
+        - symlink manipulation
+        - \\\\network\\share\\malicious.pdf
+    """
+    try:
+        # resolve() tüm symlink'leri ve .. işaretlerini çözer
+        resolved_base = base_dir.resolve(strict=False)
+        resolved_target = target_path.resolve(strict=False)
+
+        # target, base'in altında mı?
+        # Örnek: base=/home/user/krm, target=/home/user/krm/output/file.pdf → OK
+        # Örnek: base=/home/user/krm, target=/etc/passwd → FAIL
+        try:
+            resolved_target.relative_to(resolved_base)
+            return True
+        except ValueError:
+            # relative_to() hata verirse, target base'in dışında demektir
+            return False
+
+    except Exception:
+        # Beklenmeyen hata durumunda güvenli tarafta kal
+        return False
+
+
+def safe_glob_pdfs(folder: Path, base_dir: Path) -> List[Path]:
+    """
+    Güvenli PDF listesi döndür (validation + path traversal koruması).
+
+    Args:
+        folder: Taranacak klasör
+        base_dir: Güvenli temel dizin
+
+    Returns:
+        Güvenlik kontrolünden geçmiş PDF listesi
+    """
+    safe_pdfs = []
+
+    try:
+        # Klasör güvenli mi?
+        if not is_safe_path(base_dir, folder):
+            console.print(f"[red]⚠️  Güvenlik: Tehlikeli klasör atlandı: {folder}[/red]")
+            return []
+
+        # PDF'leri bul
+        all_pdfs = list(folder.glob("*.pdf"))
+
+        for pdf in all_pdfs:
+            # 1. Path traversal kontrolü
+            if not is_safe_path(base_dir, pdf):
+                console.print(f"[red]⚠️  Güvenlik: Tehlikeli path atlandı: {pdf.name}[/red]")
+                continue
+
+            # 2. PDF validation
+            is_valid, error_msg = validate_pdf_file(pdf)
+            if not is_valid:
+                console.print(f"[yellow]⚠️  Geçersiz PDF atlandı:[/yellow] {pdf.name}")
+                console.print(f"[dim]   Sebep: {error_msg}[/dim]")
+                continue
+
+            safe_pdfs.append(pdf)
+
+        return safe_pdfs
+
+    except Exception as e:
+        console.print(f"[red]Klasör tarama hatası: {e}[/red]")
+        return []
+
 def register_fonts() -> bool:
     """
     Türkçe karakter desteği için DejaVu Sans fontlarını kaydet.
@@ -162,6 +318,8 @@ def find_folders_with_reports() -> Dict[Path, Dict[str, List[Path]]]:
     """
     Alt klasörlerdeki KRM ve Findeks PDF dosyalarını bul.
 
+    GÜVENLİK: Path traversal ve PDF validation kontrolleri yapılır.
+
     Returns:
         Dict[klasör_path, {'krm': [pdf_list], 'findeks': [pdf_list]}]
     """
@@ -186,8 +344,11 @@ def find_folders_with_reports() -> Dict[Path, Dict[str, List[Path]]]:
         if folder.name.startswith('.') or folder.name in ['output', 'fonts', '__pycache__']:
             continue
 
-        # Bu klasördeki PDF'leri bul
-        all_pdfs = list(folder.glob("*.pdf"))
+        # Bu klasördeki PDF'leri GÜVENLİ ŞEKİLDE bul
+        all_pdfs = safe_glob_pdfs(folder, base_dir)
+
+        if not all_pdfs:
+            continue
 
         krm_pdfs = [pdf for pdf in all_pdfs if 'KRM' in pdf.name or 'krm' in pdf.name]
         findeks_pdfs = [pdf for pdf in all_pdfs if 'Findeks' in pdf.name or 'findeks' in pdf.name or 'FİNDEKS' in pdf.name]
@@ -210,7 +371,7 @@ def find_folders_with_reports() -> Dict[Path, Dict[str, List[Path]]]:
             console.print()
 
     if not folders_with_reports:
-        console.print("[yellow]⚠ Hiçbir klasörde KRM PDF bulunamadı![/yellow]")
+        console.print("[yellow]⚠ Hiçbir klasörde geçerli KRM PDF bulunamadı![/yellow]")
         console.print("[dim]Alt klasörler oluşturun ve içine KRM PDF'leri yerleştirin.[/dim]")
 
     return folders_with_reports

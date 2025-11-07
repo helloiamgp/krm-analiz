@@ -137,9 +137,13 @@
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-📌 VERSİYON: v3.0 (Kasım 2024)
+📌 VERSİYON: v3.1 (Kasım 2024)
 
    Yeni Özellikler:
+   🔒 PDF güvenlik validation
+   🔒 Path traversal koruması
+   🔒 Dosya boyutu limiti
+   🔒 Symlink engelleme
    ✨ Klasör bazlı analiz sistemi
    ✨ Otomatik Findeks eşleştirme
    ✨ OCR desteği (banka ismi okuma)
