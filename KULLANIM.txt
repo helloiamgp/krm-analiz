@@ -143,6 +143,8 @@
    🎨 İnteraktif progress bar'lar
    🎨 Real-time ilerleme göstergesi
    🎨 Kalan süre tahmini
+   🎨 Tree View - klasör ağacı gösterimi
+   🎨 Live Status - adım adım parsing
    🔒 PDF güvenlik validation
    🔒 Path traversal koruması
    🔒 Dosya boyutu limiti

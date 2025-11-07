@@ -21,6 +21,9 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
+from rich.tree import Tree
+from rich.live import Live
+from rich.layout import Layout
 
 # ReportLab imports
 from reportlab.lib import colors
@@ -375,6 +378,42 @@ def find_folders_with_reports() -> Dict[Path, Dict[str, List[Path]]]:
         console.print("[dim]Alt klasörler oluşturun ve içine KRM PDF'leri yerleştirin.[/dim]")
 
     return folders_with_reports
+
+def show_folder_tree(folders: Dict[Path, Dict[str, List[Path]]]) -> None:
+    """
+    Bulunan klasörleri tree formatında göster.
+
+    Args:
+        folders: find_folders_with_reports() sonucu
+    """
+    if not folders:
+        return
+
+    tree = Tree("📂 [bold cyan]Bulunan Klasörler[/bold cyan]")
+
+    for folder_path, pdfs_dict in folders.items():
+        # Klasör dalı
+        folder_branch = tree.add(f"[green]{folder_path.name}/[/green]")
+
+        # KRM dosyaları
+        if pdfs_dict['krm']:
+            krm_branch = folder_branch.add("[cyan]📄 KRM Raporları[/cyan]")
+            for pdf in pdfs_dict['krm']:
+                size_mb = pdf.stat().st_size / (1024 * 1024)
+                krm_branch.add(f"[white]{pdf.name}[/white] [dim]({size_mb:.1f} MB)[/dim]")
+
+        # Findeks dosyaları
+        if pdfs_dict['findeks']:
+            findeks_branch = folder_branch.add("[yellow]📊 Findeks Raporları[/yellow]")
+            for pdf in pdfs_dict['findeks']:
+                size_mb = pdf.stat().st_size / (1024 * 1024)
+                findeks_branch.add(f"[white]{pdf.name}[/white] [dim]({size_mb:.1f} MB)[/dim]")
+
+        # Output klasörü (oluşturulacak)
+        folder_branch.add("[dim]📁 output/ (oluşturulacak)[/dim]")
+
+    console.print(tree)
+    console.print()
 
 def parse_header(pdf: pdfplumber.PDF) -> Tuple[str, str]:
     """
@@ -989,9 +1028,32 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
 
     return sorted(anomalies, key=lambda x: (0 if x['severity'] == 'CRITICAL' else 1, x['kaynak']))
 
+def create_status_table(steps: List[Tuple[str, bool]], current_step: str) -> Table:
+    """Live status için tablo oluştur."""
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column("Icon", width=3)
+    table.add_column("Step", style="cyan")
+
+    for step_name, done in steps:
+        if done:
+            icon = "[green]✓[/green]"
+            style = "dim"
+        elif step_name == current_step:
+            icon = "[yellow]⏳[/yellow]"
+            style = "bold yellow"
+        else:
+            icon = "[dim]○[/dim]"
+            style = "dim"
+
+        table.add_row(icon, f"[{style}]{step_name}[/{style}]")
+
+    return table
+
 def analyze_report(pdf_path: Path, findeks_pdf: Optional[Path] = None) -> Dict[str, Any]:
     """
     Tek bir PDF raporunu analiz et (opsiyonel Findeks eşleştirmesiyle).
+
+    Live status ile her adımı görsel olarak gösterir.
 
     Args:
         pdf_path: Analiz edilecek PDF dosyasının Path'i
@@ -1000,6 +1062,19 @@ def analyze_report(pdf_path: Path, findeks_pdf: Optional[Path] = None) -> Dict[s
     Returns:
         Analiz sonuçlarını içeren dict
     """
+    steps = [
+        ("PDF Açılıyor", False),
+        ("Header Parsing", False),
+        ("Limit Tablosu", False),
+        ("Risk Tablosu", False),
+        ("Pasif Kaynak Tespiti", False),
+        ("Anomali Taraması", False),
+        ("Findeks Eşleştirme", False) if findeks_pdf else None,
+    ]
+    steps = [s for s in steps if s is not None]  # None'ları filtrele
+
+    # Live display olmadan hızlı analiz yap
+    # (Progress bar içinde zaten gösterge var, burada ek overhead istemiyoruz)
     try:
         with pdfplumber.open(pdf_path) as pdf:
             company_name, report_date = parse_header(pdf)
@@ -1019,13 +1094,11 @@ def analyze_report(pdf_path: Path, findeks_pdf: Optional[Path] = None) -> Dict[s
             findeks_matches = []
             if findeks_pdf and findeks_pdf.exists():
                 try:
-                    console.print(f"[cyan]🔗 Findeks eşleştirmesi yapılıyor...[/cyan]")
                     findeks_data = extract_findeks_data(findeks_pdf)
                     if findeks_data:
                         findeks_matches = find_best_matches(active_limits, active_risks, findeks_data)
-                        console.print(f"[green]✓ {len(findeks_matches)} eşleştirme bulundu[/green]")
                 except Exception as e:
-                    console.print(f"[yellow]⚠ Findeks eşleştirme hatası: {e}[/yellow]")
+                    pass  # Sessizce devam et
 
             return {
                 'pdf_name': pdf_path.name,
@@ -1040,6 +1113,129 @@ def analyze_report(pdf_path: Path, findeks_pdf: Optional[Path] = None) -> Dict[s
                 'analysis_date': datetime.now().strftime('%d.%m.%Y %H:%M'),
                 'success': True
             }
+    except Exception as e:
+        return {
+            'pdf_name': pdf_path.name,
+            'success': False,
+            'error': str(e)
+        }
+
+def analyze_report_with_live_status(pdf_path: Path, findeks_pdf: Optional[Path] = None, show_live: bool = False) -> Dict[str, Any]:
+    """
+    Analiz et ve isteğe bağlı olarak live status göster.
+
+    Args:
+        pdf_path: PDF dosya yolu
+        findeks_pdf: Findeks PDF (opsiyonel)
+        show_live: Live status gösterilsin mi?
+
+    Returns:
+        Analiz sonuçları
+    """
+    if not show_live:
+        # Normal analiz (hızlı)
+        return analyze_report(pdf_path, findeks_pdf)
+
+    # Live status ile analiz
+    steps = [
+        ("PDF Açılıyor", False),
+        ("Header Parsing", False),
+        ("Limit Tablosu", False),
+        ("Risk Tablosu", False),
+        ("Pasif Kaynak", False),
+        ("Anomali Taraması", False),
+    ]
+
+    if findeks_pdf:
+        steps.append(("Findeks Eşleştirme", False))
+
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="status")
+    )
+
+    def update_layout(current_idx: int):
+        # Header
+        layout["header"].update(
+            Panel(
+                f"[bold cyan]🔍 {pdf_path.name}[/bold cyan]",
+                border_style="cyan"
+            )
+        )
+
+        # Status tablo
+        current_steps = [(name, i < current_idx) for i, (name, _) in enumerate(steps)]
+        current_name = steps[current_idx][0] if current_idx < len(steps) else "Tamamlandı"
+        table = create_status_table(current_steps, current_name)
+        layout["status"].update(Panel(table, title="İşlemler", border_style="blue"))
+
+    try:
+        with Live(layout, console=console, refresh_per_second=10) as live:
+            import time
+
+            # Adım 0: PDF Açma
+            update_layout(0)
+            time.sleep(0.3)
+            with pdfplumber.open(pdf_path) as pdf:
+
+                # Adım 1: Header
+                update_layout(1)
+                time.sleep(0.2)
+                company_name, report_date = parse_header(pdf)
+
+                # Adım 2-3: Tablolar
+                update_layout(2)
+                time.sleep(0.3)
+                limits, risks = parse_tables(pdf)
+                update_layout(3)
+                time.sleep(0.2)
+
+                # Adım 4: Pasif kaynak
+                update_layout(4)
+                time.sleep(0.2)
+                passive_sources = identify_passive_sources(limits, risks)
+
+                all_sources = set(list(limits.keys()) + list(risks.keys()))
+                active_sources = all_sources - set(passive_sources)
+
+                active_limits = {k: v for k, v in limits.items() if k in active_sources}
+                active_risks = {k: v for k, v in risks.items() if k in active_sources}
+
+                # Adım 5: Anomali
+                update_layout(5)
+                time.sleep(0.2)
+                anomalies = find_anomalies(active_limits, active_risks)
+
+                # Adım 6: Findeks (varsa)
+                findeks_matches = []
+                if findeks_pdf and findeks_pdf.exists():
+                    update_layout(6)
+                    time.sleep(0.3)
+                    try:
+                        findeks_data = extract_findeks_data(findeks_pdf)
+                        if findeks_data:
+                            findeks_matches = find_best_matches(active_limits, active_risks, findeks_data)
+                    except:
+                        pass
+
+            # Tamamlandı göster
+            update_layout(len(steps))
+            time.sleep(0.5)
+
+        return {
+            'pdf_name': pdf_path.name,
+            'company_name': company_name,
+            'report_date': report_date,
+            'limits': limits,
+            'risks': risks,
+            'active_sources': list(active_sources),
+            'passive_sources': passive_sources,
+            'anomalies': anomalies,
+            'findeks_matches': findeks_matches,
+            'analysis_date': datetime.now().strftime('%d.%m.%Y %H:%M'),
+            'success': True
+        }
     except Exception as e:
         return {
             'pdf_name': pdf_path.name,
@@ -1515,6 +1711,9 @@ def main() -> None:
         console.print("[red]✗ Analiz edilecek klasör bulunamadı![/red]")
         return
 
+    # Tree view ile klasör yapısını göster
+    show_folder_tree(folders_with_reports)
+
     console.print(f"[bold cyan]{'='*80}[/bold cyan]")
     console.print(f"[bold]Toplam {len(folders_with_reports)} klasör işlenecek[/bold]\n")
 
@@ -1575,7 +1774,9 @@ def main() -> None:
                     description=f"[yellow]  ↳ {krm_pdf.name[:40]}..."
                 )
 
-                result = analyze_report(krm_pdf, findeks_pdf)
+                # İlk klasörün ilk PDF'i için live status göster (demo)
+                show_live = (folder_idx == 1 and pdf_idx == 1)
+                result = analyze_report_with_live_status(krm_pdf, findeks_pdf, show_live=show_live)
                 folder_results.append(result)
                 all_results.append({
                     'folder': folder.name,

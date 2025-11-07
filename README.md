@@ -15,6 +15,8 @@ Türkiye Bankalar Birliği (TBB) KRM raporlarını otomatik olarak analiz eden, 
 - ✅ **Spinner Animasyonları**: İşlem sırasında görsel feedback
 - ✅ **Kalan Süre Tahmini**: Ne kadar bekleneceği bilgisi
 - ✅ **Klasör/PDF Seviyesinde Tracking**: Her adım takip edilir
+- ✅ **Tree View**: Klasör yapısını görsel ağaç formatında gösterir
+- ✅ **Live Status**: İlk PDF için adım adım parsing gösterimi
 
 ### 🔍 Analiz Özellikleri
 - ✅ **PDF Parsing**: KRM PDF raporlarından limit ve risk bilgilerini otomatik çıkarma
@@ -155,11 +157,34 @@ python3 krm.py
   Findeks: 1 adet
     → FindeksRapor.pdf
 
+📂 Bulunan Klasörler
+├── Firma_A/
+│   ├── 📄 KRM Raporları
+│   │   └── PARAFİNANS_KRM.pdf (2.3 MB)
+│   ├── 📊 Findeks Raporları
+│   │   └── FindeksRapor.pdf (1.8 MB)
+│   └── 📁 output/ (oluşturulacak)
+└── Firma_B/
+    ├── 📄 KRM Raporları
+    │   └── XYZ_KRM.pdf (1.9 MB)
+    └── 📁 output/ (oluşturulacak)
+
 ════════════════════════════════════════════════════════════
 Toplam 2 klasör işlenecek
 
 ⠋ 📂 Klasörler işleniyor... ████████████░░░░ 50% • 0:00:15
   ↳ PARAFİNANS_KRM.pdf... ████████████ 100%
+
+┌─────────────────────────────────┐
+│ 🔍 PARAFİNANS_KRM.pdf           │
+├─────────────────────────────────┤
+│ ✓ PDF Açılıyor                  │
+│ ✓ Header Parsing                │
+│ ⏳ Limit Tablosu                │
+│ ○ Risk Tablosu                  │
+│ ○ Pasif Kaynak                  │
+│ ○ Anomali Taraması              │
+└─────────────────────────────────┘
 
 ════════════════════════════════════════════════════════════
 KLASÖR 1/2: Firma_A
@@ -385,6 +410,8 @@ Sorularınız için GitHub Issues kullanabilirsiniz.
 - 🎨 Real-time ilerleme göstergeleri
 - 🎨 Spinner animasyonları
 - 🎨 Kalan süre tahmini
+- 🎨 Tree View - klasör yapısını görsel ağaç formatında gösterir
+- 🎨 Live Status - ilk PDF için adım adım parsing gösterimi
 - 🔒 PDF güvenlik validation eklendi
 - 🔒 Path traversal koruması
 - 🔒 Dosya boyutu limiti (DOS koruması)
