@@ -4,7 +4,7 @@ KRM Rapor Analiz Aracı
 PDF çıktı ile profesyonel raporlama
 
 Gereksinimler:
-    pip install pdfplumber reportlab
+    pip install pdfplumber reportlab PyMuPDF pytesseract Pillow rich
 
 Kullanım:
     python krm.py                  # Dizindeki tüm PDF'leri analiz et
@@ -13,6 +13,7 @@ Kullanım:
 
 import pdfplumber
 import sys
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
@@ -36,6 +37,7 @@ PASSIVE_SOURCE_CUTOFF_DAYS = 180
 HIGH_USAGE_THRESHOLD = 95.0
 CRITICAL_USAGE_THRESHOLD = 100.0
 CRITICAL_DELAY_DAYS = 30
+FINDEKS_MATCH_THRESHOLD = 0.15  # %15 tolerans
 
 console = Console()
 
@@ -154,10 +156,10 @@ def ensure_output_dir() -> Path:
 
 def find_pdfs() -> List[Path]:
     """
-    Mevcut dizindeki tüm PDF dosyalarını bul.
+    Mevcut dizindeki KRM PDF dosyalarını bul.
 
     Returns:
-        Sıralı PDF dosya Path listesi
+        Sıralı KRM PDF dosya Path listesi
     """
     # PyInstaller uyumluluğu: EXE'nin bulunduğu dizini bul
     if getattr(sys, 'frozen', False):
@@ -169,17 +171,19 @@ def find_pdfs() -> List[Path]:
         current_dir = Path(__file__).parent
         console.print(f"[dim]🔍 Script modu: {current_dir}[/dim]")
 
-    console.print(f"[cyan]📂 PDF aranıyor:[/cyan] {current_dir}")
+    console.print(f"[cyan]📂 KRM PDF aranıyor:[/cyan] {current_dir}")
 
-    pdfs = list(current_dir.glob("*.pdf"))
+    # Sadece isimde "KRM" geçen PDF'leri al
+    all_pdfs = list(current_dir.glob("*.pdf"))
+    pdfs = [pdf for pdf in all_pdfs if 'KRM' in pdf.name or 'krm' in pdf.name]
 
     if pdfs:
-        console.print(f"[green]✓ {len(pdfs)} adet PDF bulundu:[/green]")
+        console.print(f"[green]✓ {len(pdfs)} adet KRM PDF bulundu:[/green]")
         for pdf in pdfs:
             console.print(f"  [dim]→ {pdf.name}[/dim]")
     else:
-        console.print(f"[yellow]⚠ Hiçbir PDF bulunamadı![/yellow]")
-        console.print(f"[dim]Lütfen PDF dosyalarını şu dizine koyun:[/dim]")
+        console.print(f"[yellow]⚠ Hiçbir KRM PDF bulunamadı![/yellow]")
+        console.print(f"[dim]Lütfen isimde 'KRM' geçen PDF dosyalarını şu dizine koyun:[/dim]")
         console.print(f"[cyan]{current_dir}[/cyan]")
 
     return sorted(pdfs)
@@ -197,18 +201,18 @@ def parse_header(pdf: pdfplumber.PDF) -> Tuple[str, str]:
     try:
         first_page = pdf.pages[0]
         text = first_page.extract_text()
-        
+
         lines = text.split('\n')
         company_name = ""
         for i, line in enumerate(lines):
             if 'KRM SORGU ÖZET RAPORU' in line and i + 1 < len(lines):
                 company_name = lines[i + 1].strip()
                 break
-        
+
         import re
         date_match = re.search(r'Sorgu Tarihi\s+(\d{2}\.\d{2}\.\d{2})', text)
         report_date = date_match.group(1) if date_match else "Bilinmiyor"
-        
+
         return company_name, report_date
     except:
         return "Bilinmeyen Firma", "Bilinmiyor"
@@ -270,19 +274,19 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
 
     if cutoff_date is None:
         cutoff_date = datetime.now() - timedelta(days=PASSIVE_SOURCE_CUTOFF_DAYS)
-    
+
     for page_num in [1, 2]:
         try:
             page = pdf.pages[page_num]
             tables = page.extract_tables()
-            
+
             for table in tables:
                 if not table or len(table) < 2:
                     continue
-                
+
                 first_row = table[0] if table else []
                 first_cell = str(first_row[0]) if first_row else ""
-                
+
                 # Limit tablosu
                 if "LİMİT BİLGİLERİ" in first_cell and "RİSK" not in first_cell:
                     if len(table) < 3:
@@ -307,17 +311,17 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                     toplam_idx = indices.get('toplam', -1)
                     revize_vade_idx = indices.get('revize_vade', -1)
                     son_revize_idx = indices.get('son_revize', -1)
-                    
+
                     for row in table[2:]:
                         if not row or not row[0] or 'KAYNAK-' not in str(row[0]):
                             continue
-                        
+
                         kaynak = str(row[0]).strip()
-                        
+
                         try:
                             revize_vade = parse_date(row[revize_vade_idx]) if revize_vade_idx >= 0 and len(row) > revize_vade_idx else None
                             son_revize = parse_date(row[son_revize_idx]) if son_revize_idx >= 0 and len(row) > son_revize_idx else None
-                            
+
                             latest_revize = None
                             if revize_vade and son_revize:
                                 latest_revize = max(revize_vade, son_revize)
@@ -325,9 +329,9 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                                 latest_revize = revize_vade
                             elif son_revize:
                                 latest_revize = son_revize
-                            
+
                             revize_gecmis = latest_revize and latest_revize < cutoff_date
-                            
+
                             limits[kaynak] = {
                                 'grup': clean_number(row[grup_idx]) if grup_idx >= 0 and len(row) > grup_idx else 0,
                                 'nakdi': clean_number(row[nakdi_idx]) if nakdi_idx >= 0 and len(row) > nakdi_idx else 0,
@@ -338,7 +342,7 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                             }
                         except Exception as e:
                             continue
-                
+
                 # Risk tablosu
                 elif "RİSK BİLGİLERİ" in first_cell:
                     if len(table) < 3:
@@ -359,13 +363,13 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                     gayrinakdi_idx = indices.get('gayrinakdi', -1)
                     toplam_idx = indices.get('toplam', -1)
                     gecikme_idx = indices.get('gecikme', -1)
-                    
+
                     for row in table[2:]:
                         if not row or not row[0] or 'KAYNAK-' not in str(row[0]):
                             continue
-                        
+
                         kaynak = str(row[0]).strip()
-                        
+
                         try:
                             risks[kaynak] = {
                                 'nakdi': clean_number(row[nakdi_idx]) if nakdi_idx >= 0 and len(row) > nakdi_idx else 0,
@@ -375,11 +379,288 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                             }
                         except Exception as e:
                             continue
-                            
+
         except Exception as e:
             continue
-    
+
     return limits, risks
+
+def clean_bank_name_ocr(raw_name: str) -> str:
+    """OCR hatalarını düzelt ve banka ismini temizle."""
+    bank_mapping = {
+        'garanti bbva': 'Garanti BBVA',
+        'garanti': 'Garanti BBVA',
+        'ddestekbank': 'DenizBank',
+        'denizbank': 'DenizBank',
+        'destekbank': 'DenizBank',
+        'eprurolbank': 'ING Bank',
+        'ing': 'ING Bank',
+        'turkishbank': 'TurkishBank',
+        'vakifbank': 'Vakıfbank',
+        'vakif': 'Vakıfbank',
+        'anadolubank': 'Anadolubank',
+        'anadolu': 'Anadolubank',
+        'qnb': 'QNB Finansbank',
+        'yanikredi': 'Yapı Kredi',
+        'yapikredi': 'Yapı Kredi',
+        'yapi kredi': 'Yapı Kredi',
+        'ziraat': 'Ziraat Bankası',
+        'halkbank': 'Halkbank',
+        'halk': 'Halkbank',
+        'isbank': 'İş Bankası',
+        'is bankasi': 'İş Bankası',
+        'akbank': 'Akbank',
+        'akbanik': 'Akbank',
+        'teb': 'TEB',
+        'sekerbank': 'Şekerbank',
+        'seker': 'Şekerbank',
+        'finansbank': 'QNB Finansbank',
+        'odeabank': 'Odeabank',
+        'fibabanka': 'Fibabanka',
+        'faktifbank': 'Aktifbank',
+        'aktifbank': 'Aktifbank',
+    }
+
+    name_clean = raw_name.lower().strip()
+    name_clean = re.sub(r'[^a-z\s]', '', name_clean)
+
+    for key, value in bank_mapping.items():
+        if key in name_clean:
+            return value
+
+    return raw_name.strip().title()
+
+def parse_number_ocr(text: str) -> float:
+    """OCR'dan gelen sayıları parse et."""
+    if not text or text == '-':
+        return 0.0
+    try:
+        cleaned = re.sub(r'[^\d]', '', text)
+        return float(cleaned) if cleaned else 0.0
+    except:
+        return 0.0
+
+def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
+    """
+    Findeks raporundan kurum bilgilerini OCR ile çıkar.
+
+    Args:
+        pdf_path: Findeks PDF dosyasının Path'i
+
+    Returns:
+        Her kurum için dict listesi (gerçek banka isimleriyle)
+    """
+    import re
+
+    kurumlar = []
+
+    try:
+        # PyMuPDF ve pytesseract kullan
+        import fitz
+        import pytesseract
+        from PIL import Image
+
+        pdf = fitz.open(str(pdf_path))
+
+        for page_num in range(2, len(pdf)):
+            try:
+                page = pdf[page_num]
+
+                # Yüksek çözünürlükte render
+                mat = fitz.Matrix(2.5, 2.5)
+                pix = page.get_pixmap(matrix=mat)
+                img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+
+                # OCR yap
+                text = pytesseract.image_to_string(img, lang='eng')
+
+                # "Toplam" kelimesinin önündeki banka isimlerini bul
+                toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
+
+                for bank_candidate in toplam_lines:
+                    bank_candidate = re.sub(r'^[^a-zA-Z]+', '', bank_candidate).strip()
+
+                    # Banka anahtar kelimeleri
+                    if not any(keyword in bank_candidate.lower() for keyword in
+                              ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
+                               'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
+                               'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
+                        continue
+
+                    bank_name = clean_bank_name_ocr(bank_candidate)
+
+                    # Banka için limit/risk bloğunu bul
+                    bank_pos = text.find(bank_candidate)
+                    if bank_pos == -1:
+                        continue
+
+                    block = text[max(0, bank_pos-200):bank_pos+800]
+
+                    # Limit ve Risk değerlerini parse et
+                    grup_limit_match = re.search(r'Grup\s+([\d.,]+)', block)
+                    nakdi_limit_match = re.search(r'Nakdi\s+([\d.,]+)', block)
+                    gayri_limit_match = re.search(r'Gayri\s+Nakdi\s+([\d.,]+)', block)
+                    toplam_limit_match = re.search(r'Toplam\s+([\d.,]+)', block)
+
+                    # Risk değerleri
+                    risk_section = block[block.find('RISK (TL)'):] if 'RISK (TL)' in block else block
+                    nakdi_risk_matches = re.findall(r'Nakdi\s+([\d.,]+)', risk_section)
+                    gayri_risk_matches = re.findall(r'Gayri\s+Nakdi\s+([\d.,]+)', risk_section)
+                    toplam_risk_matches = re.findall(r'Toplam\s+([\d.,]+)', risk_section)
+
+                    kurum_data = {
+                        'sayfa': page_num + 1,
+                        'kurum': bank_name,
+                        'grup_limit': parse_number_ocr(grup_limit_match.group(1)) if grup_limit_match else 0.0,
+                        'nakdi_limit': parse_number_ocr(nakdi_limit_match.group(1)) if nakdi_limit_match else 0.0,
+                        'gayrinakdi_limit': parse_number_ocr(gayri_limit_match.group(1)) if gayri_limit_match else 0.0,
+                        'toplam_limit': parse_number_ocr(toplam_limit_match.group(1)) if toplam_limit_match else 0.0,
+                        'nakdi_risk': parse_number_ocr(nakdi_risk_matches[-1]) if nakdi_risk_matches else 0.0,
+                        'gayrinakdi_risk': parse_number_ocr(gayri_risk_matches[-1]) if gayri_risk_matches else 0.0,
+                        'toplam_risk': parse_number_ocr(toplam_risk_matches[-1]) if toplam_risk_matches else 0.0,
+                        'revize_tarihi': None,
+                    }
+
+                    if any([kurum_data['nakdi_limit'], kurum_data['gayrinakdi_limit'],
+                           kurum_data['nakdi_risk'], kurum_data['gayrinakdi_risk']]):
+                        kurumlar.append(kurum_data)
+
+            except Exception as e:
+                console.print(f"[dim]Sayfa {page_num+1} OCR hatası: {e}[/dim]")
+                continue
+
+        pdf.close()
+
+    except Exception as e:
+        console.print(f"[yellow]⚠ Findeks OCR hatası: {e}[/yellow]")
+        console.print(f"[dim]PyMuPDF ve pytesseract gerekli. Kurulum: pip install PyMuPDF pytesseract[/dim]")
+
+    return kurumlar
+
+def calculate_match_score(krm_data: Dict[str, Any], findeks_data: Dict[str, Any]) -> float:
+    """
+    İki kaynak arasındaki benzerlik skorunu hesapla (düşük = iyi).
+
+    Args:
+        krm_data: KRM kaynak bilgileri
+        findeks_data: Findeks kurum bilgileri
+
+    Returns:
+        Toplam fark skoru
+    """
+    score = 0.0
+    match_count = 0
+
+    # Nakdi Limit
+    krm_nakdi_limit = krm_data.get('nakdi_limit', 0)
+    findeks_nakdi_limit = findeks_data.get('nakdi_limit', 0)
+    if krm_nakdi_limit > 0 and findeks_nakdi_limit > 0:
+        diff = abs(krm_nakdi_limit - findeks_nakdi_limit) / max(krm_nakdi_limit, findeks_nakdi_limit)
+        score += diff * 2
+        match_count += 1
+
+    # Gayrinakdi Limit
+    krm_gayri_limit = krm_data.get('gayrinakdi_limit', 0)
+    findeks_gayri_limit = findeks_data.get('gayrinakdi_limit', 0)
+    if krm_gayri_limit > 0 and findeks_gayri_limit > 0:
+        diff = abs(krm_gayri_limit - findeks_gayri_limit) / max(krm_gayri_limit, findeks_gayri_limit)
+        score += diff * 1.5
+        match_count += 1
+
+    # Nakdi Risk
+    krm_nakdi_risk = krm_data.get('nakdi_risk', 0)
+    findeks_nakdi_risk = findeks_data.get('nakdi_risk', 0)
+    if krm_nakdi_risk > 0 and findeks_nakdi_risk > 0:
+        diff = abs(krm_nakdi_risk - findeks_nakdi_risk) / max(krm_nakdi_risk, findeks_nakdi_risk)
+        score += diff * 2
+        match_count += 1
+
+    # Gayrinakdi Risk
+    krm_gayri_risk = krm_data.get('gayrinakdi_risk', 0)
+    findeks_gayri_risk = findeks_data.get('gayrinakdi_risk', 0)
+    if krm_gayri_risk > 0 and findeks_gayri_risk > 0:
+        diff = abs(krm_gayri_risk - findeks_gayri_risk) / max(krm_gayri_risk, findeks_gayri_risk)
+        score += diff * 1.5
+        match_count += 1
+
+    # Toplam Limit
+    krm_toplam_limit = krm_data.get('toplam_limit', 0)
+    findeks_toplam_limit = findeks_data.get('toplam_limit', 0)
+    if krm_toplam_limit > 0 and findeks_toplam_limit > 0:
+        diff = abs(krm_toplam_limit - findeks_toplam_limit) / max(krm_toplam_limit, findeks_toplam_limit)
+        score += diff * 1
+        match_count += 1
+
+    if match_count == 0:
+        return float('inf')
+
+    avg_score = score / match_count
+    if match_count < 2:
+        avg_score *= 2
+
+    return avg_score
+
+def find_best_matches(
+    krm_sources: Dict[str, Dict[str, Any]],
+    krm_risks: Dict[str, Dict[str, Any]],
+    findeks_data: List[Dict[str, Any]],
+    threshold: float = FINDEKS_MATCH_THRESHOLD
+) -> List[Dict[str, Any]]:
+    """
+    KRM kaynakları ile Findeks kurumlarını eşleştir.
+
+    Args:
+        krm_sources: KRM limit bilgileri
+        krm_risks: KRM risk bilgileri
+        findeks_data: Findeks kurum listesi
+        threshold: Maksimum fark yüzdesi
+
+    Returns:
+        Eşleştirme sonuçları listesi
+    """
+    matches = []
+
+    for kaynak, limit_data in krm_sources.items():
+        risk_data = krm_risks.get(kaynak, {})
+
+        krm_combined = {
+            'nakdi_limit': limit_data.get('nakdi', 0),
+            'gayrinakdi_limit': limit_data.get('gayrinakdi', 0),
+            'toplam_limit': limit_data.get('toplam', 0),
+            'nakdi_risk': risk_data.get('nakdi', 0),
+            'gayrinakdi_risk': risk_data.get('gayrinakdi', 0),
+            'toplam_risk': risk_data.get('toplam', 0),
+        }
+
+        best_match = None
+        best_score = float('inf')
+
+        for findeks_inst in findeks_data:
+            score = calculate_match_score(krm_combined, findeks_inst)
+            if score < best_score:
+                best_score = score
+                best_match = findeks_inst
+
+        if best_score <= threshold and best_match:
+            if best_score <= 0.05:
+                confidence = 'HIGH'
+            elif best_score <= 0.10:
+                confidence = 'MEDIUM'
+            else:
+                confidence = 'LOW'
+
+            matches.append({
+                'krm_kaynak': kaynak,
+                'findeks_kurum': best_match['kurum'],
+                'findeks_sayfa': best_match['sayfa'],
+                'score': best_score,
+                'confidence': confidence,
+                'krm_data': krm_combined,
+                'findeks_data': best_match,
+            })
+
+    matches.sort(key=lambda x: x['score'])
+    return matches
 
 def identify_passive_sources(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str, Any]]) -> List[str]:
     """
@@ -420,11 +701,11 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
     """
     anomalies: List[Dict[str, Any]] = []
     all_sources = set(list(limits.keys()) + list(risks.keys()))
-    
+
     for kaynak in all_sources:
         limit_data = limits.get(kaynak, {})
         risk_data = risks.get(kaynak, {})
-        
+
         grup_limit = limit_data.get('grup', 0)
         nakdi_limit = limit_data.get('nakdi', 0)
         nakdi_risk = risk_data.get('nakdi', 0)
@@ -433,11 +714,11 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
         toplam_limit = limit_data.get('toplam', 0)
         toplam_risk = risk_data.get('toplam', 0)
         gecikme = risk_data.get('gecikme', 0)
-        
+
         # 1. Nakdi limit aşımı
         if nakdi_risk > nakdi_limit and nakdi_limit > 0:
             asim = nakdi_risk - nakdi_limit
-            
+
             if toplam_limit > 0 and nakdi_risk <= toplam_limit:
                 anomalies.append({
                     'kaynak': kaynak,
@@ -454,11 +735,11 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
                     'detail': f'Nakdi risk ({nakdi_risk:,.0f}) nakdi limiti ({nakdi_limit:,.0f}) aşıyor. Aşım: {asim:,.0f} TL',
                     'value': asim
                 })
-        
+
         # 2. Gayrinakdi limit aşımı
         if gayrinakdi_risk > gayrinakdi_limit and gayrinakdi_limit > 0:
             asim = gayrinakdi_risk - gayrinakdi_limit
-            
+
             if toplam_limit > 0 and gayrinakdi_risk > toplam_limit:
                 asim_genel = gayrinakdi_risk - toplam_limit
                 anomalies.append({
@@ -476,7 +757,7 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
                     'detail': f'Gayrinakdi risk ({gayrinakdi_risk:,.0f}) gayrinakdi limiti ({gayrinakdi_limit:,.0f}) aşıyor ama genel limit ({toplam_limit:,.0f}) içinde. Gayrinakdi aşım: {asim:,.0f} TL',
                     'value': asim
                 })
-        
+
         # 3. Limitsiz kullanım
         if toplam_risk > 0 and toplam_limit == 0:
             anomalies.append({
@@ -486,7 +767,7 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
                 'detail': f'Limit olmadan {toplam_risk:,.0f} TL risk taşınıyor',
                 'value': toplam_risk
             })
-        
+
         # 4. Gecikme
         if gecikme > 0:
             anomalies.append({
@@ -517,15 +798,16 @@ def find_anomalies(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str,
                     'detail': f'%{kullanim:.1f} kullanim (Risk: {toplam_risk:,.0f} / Limit: {toplam_limit:,.0f})',
                     'value': kullanim
                 })
-    
+
     return sorted(anomalies, key=lambda x: (0 if x['severity'] == 'CRITICAL' else 1, x['kaynak']))
 
-def analyze_report(pdf_path: Path) -> Dict[str, Any]:
+def analyze_report(pdf_path: Path, findeks_pdf: Optional[Path] = None) -> Dict[str, Any]:
     """
-    Tek bir PDF raporunu analiz et.
+    Tek bir PDF raporunu analiz et (opsiyonel Findeks eşleştirmesiyle).
 
     Args:
         pdf_path: Analiz edilecek PDF dosyasının Path'i
+        findeks_pdf: Opsiyonel Findeks raporu Path'i
 
     Returns:
         Analiz sonuçlarını içeren dict
@@ -534,17 +816,29 @@ def analyze_report(pdf_path: Path) -> Dict[str, Any]:
         with pdfplumber.open(pdf_path) as pdf:
             company_name, report_date = parse_header(pdf)
             limits, risks = parse_tables(pdf)
-            
+
             passive_sources = identify_passive_sources(limits, risks)
-            
+
             all_sources = set(list(limits.keys()) + list(risks.keys()))
             active_sources = all_sources - set(passive_sources)
-            
+
             active_limits = {k: v for k, v in limits.items() if k in active_sources}
             active_risks = {k: v for k, v in risks.items() if k in active_sources}
-            
+
             anomalies = find_anomalies(active_limits, active_risks)
-            
+
+            # Findeks eşleştirmesi (varsa)
+            findeks_matches = []
+            if findeks_pdf and findeks_pdf.exists():
+                try:
+                    console.print(f"[cyan]🔗 Findeks eşleştirmesi yapılıyor...[/cyan]")
+                    findeks_data = extract_findeks_data(findeks_pdf)
+                    if findeks_data:
+                        findeks_matches = find_best_matches(active_limits, active_risks, findeks_data)
+                        console.print(f"[green]✓ {len(findeks_matches)} eşleştirme bulundu[/green]")
+                except Exception as e:
+                    console.print(f"[yellow]⚠ Findeks eşleştirme hatası: {e}[/yellow]")
+
             return {
                 'pdf_name': pdf_path.name,
                 'company_name': company_name,
@@ -554,6 +848,7 @@ def analyze_report(pdf_path: Path) -> Dict[str, Any]:
                 'active_sources': list(active_sources),
                 'passive_sources': passive_sources,
                 'anomalies': anomalies,
+                'findeks_matches': findeks_matches,
                 'analysis_date': datetime.now().strftime('%d.%m.%Y %H:%M'),
                 'success': True
             }
@@ -600,7 +895,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
 
     pdf_filename = Path(result['pdf_name']).stem + '.pdf'
     pdf_path = output_dir / pdf_filename
-    
+
     doc = SimpleDocTemplate(
         str(pdf_path),
         pagesize=A4,
@@ -609,7 +904,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         topMargin=2*cm,
         bottomMargin=2*cm
     )
-    
+
     story = []
     styles = getSampleStyleSheet()
 
@@ -650,7 +945,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     ]))
     story.append(baslik_table)
     story.append(Spacer(1, 0.5*cm))
-    
+
     # Genel Bilgiler
     info_data = [
         ['Firma:', result['company_name']],
@@ -658,7 +953,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ['Analiz Tarihi:', result['analysis_date']],
         ['Kaynak Dosya:', result['pdf_name']]
     ]
-    
+
     info_table = RLTable(info_data, colWidths=[4*cm, 13*cm])
     info_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
@@ -674,21 +969,21 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
-    
+
     story.append(info_table)
     story.append(Spacer(1, 0.8*cm))
-    
+
     # Özet İstatistikler
     story.append(create_heading("Özet İstatistikler", font_name_bold))
     story.append(Spacer(1, 0.3*cm))
-    
+
     total_sources = len(result['active_sources']) + len(result['passive_sources'])
     active_count = len(result['active_sources'])
     passive_count = len(result['passive_sources'])
     total_anomalies = len(result['anomalies'])
     critical_count = len([a for a in result['anomalies'] if a['severity'] == 'CRITICAL'])
     warning_count = len([a for a in result['anomalies'] if a['severity'] == 'WARNING'])
-    
+
     stats_data = [
         ['Toplam Kaynak:', str(total_sources)],
         ['Aktif Kaynak:', str(active_count)],
@@ -697,7 +992,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ['Kritik Sorunlar:', str(critical_count)],
         ['Uyarılar:', str(warning_count)]
     ]
-    
+
     stats_table = RLTable(stats_data, colWidths=[6*cm, 6*cm])
     stats_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e8f4f8')),
@@ -714,25 +1009,25 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('TOPPADDING', (0, 0), (-1, -1), 6),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
     ]))
-    
+
     story.append(stats_table)
     story.append(Spacer(1, 0.8*cm))
-    
+
     # Pasif Kaynaklar
     if result['passive_sources']:
         story.append(create_heading(f"Pasif Kaynaklar ({passive_count})", font_name_bold))
         story.append(Spacer(1, 0.3*cm))
-        
+
         passive_data = [['Kaynak', 'Son Revize', 'Grup Limit', 'Toplam Limit', 'Durum']]
-        
+
         for kaynak in sorted(result['passive_sources']):
             limit_data = result['limits'].get(kaynak, {})
             revize_tarihi = limit_data.get('revize_tarihi')
             revize_str = revize_tarihi.strftime('%d/%m/%Y') if revize_tarihi else 'Bilinmiyor'
-            
+
             grup_limit = limit_data.get('grup', 0)
             toplam_limit = limit_data.get('toplam', 0)
-            
+
             passive_data.append([
                 kaynak,
                 revize_str,
@@ -740,7 +1035,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
                 format_number(toplam_limit),
                 'Pasif'
             ])
-        
+
         passive_table = RLTable(passive_data, colWidths=[2.5*cm, 2.5*cm, 3*cm, 3*cm, 2*cm])
         passive_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9d9d9')),
@@ -758,10 +1053,10 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
             ('WORDWRAP', (0, 0), (-1, -1), True),
         ]))
-        
+
         story.append(passive_table)
         story.append(Spacer(1, 0.8*cm))
-    
+
     # Kritik Sorunlar - Paragraph ile wordwrap
     critical = [a for a in result['anomalies'] if a['severity'] == 'CRITICAL']
     if critical:
@@ -792,7 +1087,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             story.append(para)
 
         story.append(Spacer(1, 0.5*cm))
-    
+
     # Uyarılar - Paragraph ile wordwrap
     warnings = [a for a in result['anomalies'] if a['severity'] == 'WARNING']
     if warnings:
@@ -823,18 +1118,22 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             story.append(para)
 
         story.append(Spacer(1, 0.5*cm))
-    
+
     # Yeni sayfa - Detaylı Kaynak Bilgileri
     story.append(PageBreak())
     story.append(create_heading("Detaylı Aktif Kaynak Bilgileri", font_name_bold))
     story.append(Spacer(1, 0.3*cm))
-    
-    detail_data = [['Kaynak', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
-    
+
+    # Findeks eşleştirmelerini dict'e çevir (hızlı erişim için)
+    findeks_matches = result.get('findeks_matches', [])
+    findeks_map = {match['krm_kaynak']: match['findeks_kurum'] for match in findeks_matches}
+
+    detail_data = [['Kaynak', 'Findeks\nKurum', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
+
     for kaynak in sorted(result['active_sources']):
         limit_data = result['limits'].get(kaynak, {})
         risk_data = result['risks'].get(kaynak, {})
-        
+
         grup_limit = limit_data.get('grup', 0)
         nakdi_limit = limit_data.get('nakdi', 0)
         nakdi_risk = risk_data.get('nakdi', 0)
@@ -842,11 +1141,15 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         gayrinakdi_risk = risk_data.get('gayrinakdi', 0)
         toplam_limit = limit_data.get('toplam', 0)
         toplam_risk = risk_data.get('toplam', 0)
-        
+
         kullanim = (toplam_risk / toplam_limit * 100) if toplam_limit > 0 else 0
-        
+
+        # Findeks eşleştirmesini bul
+        findeks_kurum = findeks_map.get(kaynak, '-')
+
         detail_data.append([
             kaynak,
+            findeks_kurum,
             format_number(grup_limit),
             format_number(nakdi_limit),
             format_number(nakdi_risk),
@@ -856,9 +1159,9 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             format_number(toplam_risk),
             f"{kullanim:.1f}"
         ])
-    
-    detail_table = RLTable(detail_data, colWidths=[2*cm, 2*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.8*cm, 1.2*cm])
-    
+
+    detail_table = RLTable(detail_data, colWidths=[1.8*cm, 2.2*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1*cm])
+
     # Zebra stripes
     table_style_commands = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
@@ -877,11 +1180,11 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     for i in range(1, len(detail_data)):
         if i % 2 == 0:
             table_style_commands.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f0f0f0')))
-    
+
     detail_table.setStyle(TableStyle(table_style_commands))
-    
+
     story.append(detail_table)
-    
+
     # Footer
     story.append(Spacer(1, 1*cm))
     footer_style = ParagraphStyle(
@@ -901,10 +1204,10 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         ('ALIGN', (0, 0), (0, 0), 'CENTER'),
     ]))
     story.append(footer_table)
-    
+
     # Build PDF
     doc.build(story)
-    
+
     return pdf_path
 
 def print_single_report(result: Dict[str, Any]) -> None:
@@ -917,7 +1220,7 @@ def print_single_report(result: Dict[str, Any]) -> None:
     if not result['success']:
         console.print(f"[red]✗[/red] {result['pdf_name']}: {result['error']}")
         return
-    
+
     console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
     console.print(Panel.fit(
         f"[bold]{result['company_name']}[/bold]\n"
@@ -925,44 +1228,44 @@ def print_single_report(result: Dict[str, Any]) -> None:
         f"Dosya: {result['pdf_name']}",
         border_style="cyan"
     ))
-    
+
     anomalies = result['anomalies']
     active_count = len(result['active_sources'])
     passive_count = len(result['passive_sources'])
-    
+
     console.print(f"\n[bold]📊 Özet:[/bold]")
     console.print(f"  Toplam Kaynak: {active_count + passive_count}")
     console.print(f"  [green]✅ Aktif Kaynak: {active_count}[/green]")
     if passive_count > 0:
         console.print(f"  [dim]💤 Pasif Kaynak: {passive_count}[/dim]")
     console.print(f"  Tespit Edilen Sorun: {len(anomalies)}")
-    
+
     critical = [a for a in anomalies if a['severity'] == 'CRITICAL']
     warnings = [a for a in anomalies if a['severity'] == 'WARNING']
-    
+
     if critical:
         console.print(f"  [red]Kritik: {len(critical)}[/red]")
     if warnings:
         console.print(f"  [yellow]Uyarı: {len(warnings)}[/yellow]")
-    
+
     if passive_count > 0:
         console.print(f"\n[bold dim]💤 Pasif Kaynaklar ({passive_count}):[/bold dim]")
-        
+
         passive_table = Table(title="Pasif Kaynaklar - Revize Vadesi Gecmis", border_style="dim", show_header=True)
         passive_table.add_column("Kaynak", style="dim cyan", width=12)
         passive_table.add_column("Son Revize", style="dim yellow", width=12)
         passive_table.add_column("Grup Limit", style="dim", width=15, justify="right")
         passive_table.add_column("Toplam Limit", style="dim", width=15, justify="right")
         passive_table.add_column("Durum", style="dim red", width=10)
-        
+
         for kaynak in sorted(result['passive_sources']):
             limit_data = result['limits'].get(kaynak, {})
             revize_tarihi = limit_data.get('revize_tarihi')
             revize_str = revize_tarihi.strftime('%d/%m/%Y') if revize_tarihi else 'Bilinmiyor'
-            
+
             grup_limit = limit_data.get('grup', 0)
             toplam_limit = limit_data.get('toplam', 0)
-            
+
             passive_table.add_row(
                 kaynak,
                 revize_str,
@@ -970,33 +1273,33 @@ def print_single_report(result: Dict[str, Any]) -> None:
                 f"{toplam_limit:,.0f}",
                 "❌ Pasif"
             )
-        
+
         console.print(passive_table)
-    
+
     if anomalies:
         console.print(f"\n[bold]🚨 Tespit Edilen Sorunlar:[/bold]")
-        
+
         if critical:
             table = Table(title="KRITIK", border_style="red", show_header=True)
             table.add_column("Kaynak", style="cyan", width=15)
             table.add_column("Tip", style="yellow", width=25)
             table.add_column("Detay", style="white")
-            
+
             for a in critical:
                 table.add_row(a['kaynak'], a['type'], a['detail'])
-            
+
             console.print(table)
-        
+
         if warnings:
             console.print()
             table = Table(title="UYARI", border_style="yellow", show_header=True)
             table.add_column("Kaynak", style="cyan", width=15)
             table.add_column("Tip", style="yellow", width=25)
             table.add_column("Detay", style="white")
-            
+
             for a in warnings:
                 table.add_row(a['kaynak'], a['type'], a['detail'])
-            
+
             console.print(table)
     else:
         console.print(f"\n[bold green]✅ Aktif kaynaklarda tutarsizlik tespit edilmedi[/bold green]")
@@ -1010,7 +1313,7 @@ def main() -> None:
     console.print(Panel.fit(
         "[bold cyan]KRM Rapor Analiz Aracı v2[/bold cyan]\n"
         f"Tarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-        "[dim]PDF raporlama ve pasif kaynak tespiti[/dim]",
+        "[dim]PDF raporlama, pasif kaynak tespiti ve Findeks eşleştirmesi[/dim]",
         border_style="cyan"
     ))
 
@@ -1018,42 +1321,56 @@ def main() -> None:
     register_fonts()
 
     output_dir = ensure_output_dir()
-    
+
+    # Findeks raporunu ara (çalışma dizininde)
+    if getattr(sys, 'frozen', False):
+        work_dir = Path(sys.executable).parent
+    else:
+        work_dir = Path(__file__).parent
+
+    findeks_pdf = None
+    findeks_candidates = list(work_dir.glob("*Findeks*.pdf")) + list(work_dir.glob("*findeks*.pdf"))
+    if findeks_candidates:
+        findeks_pdf = findeks_candidates[0]
+        console.print(f"[cyan]🔗 Findeks raporu bulundu:[/cyan] {findeks_pdf.name}")
+    else:
+        console.print("[dim]📝 Findeks raporu bulunamadı, eşleştirme atlanıyor[/dim]")
+
     if len(sys.argv) > 1:
         pdf_path = Path(sys.argv[1])
         if not pdf_path.exists():
             console.print(f"[red]Hata:[/red] {pdf_path} bulunamadi!")
             return
-        
+
         console.print(f"\n[yellow]Analiz ediliyor: {pdf_path.name}[/yellow]")
-        result = analyze_report(pdf_path)
-        
+        result = analyze_report(pdf_path, findeks_pdf)
+
         if result['success']:
             pdf_output = generate_pdf(result, output_dir)
             console.print(f"[green]✓[/green] PDF kaydedildi: {pdf_output}")
-        
+
         print_single_report(result)
         return
-    
+
     pdfs = find_pdfs()
-    
+
     if not pdfs:
         console.print("[yellow]Bu dizinde PDF dosyasi bulunamadi![/yellow]")
         return
-    
+
     console.print(f"\n[green]✓[/green] {len(pdfs)} adet PDF bulundu\n")
-    
+
     results = []
     for pdf_path in track(pdfs, description="Analiz ediliyor..."):
-        result = analyze_report(pdf_path)
+        result = analyze_report(pdf_path, findeks_pdf)
         results.append(result)
-        
+
         if result['success']:
             pdf_output = generate_pdf(result, output_dir)
-    
+
     for result in results:
         print_single_report(result)
-    
+
     console.print(f"\n[bold cyan]{'='*80}[/bold cyan]")
     console.print(f"[bold]GENEL ÖZET[/bold]")
 
@@ -1068,7 +1385,7 @@ def main() -> None:
     console.print(f"Toplam Kritik Sorun: [red]{total_critical}[/red]")
     console.print(f"Toplam Uyarı: [yellow]{total_warnings}[/yellow]")
     console.print(f"\n[green]✓[/green] PDF raporlar kaydedildi: {output_dir}/")
-    
+
     if total_critical == 0 and total_warnings == 0:
         console.print("\n[bold green]🎉 Tüm aktif kaynaklar temiz![/bold green]")
 
