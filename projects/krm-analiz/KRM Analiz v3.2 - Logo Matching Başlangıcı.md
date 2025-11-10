@@ -2,13 +2,13 @@
 
 ## 🎯 Proje Özeti
 
-KRM Analiz projesine logo matching özelliği eklendi. Bu özellik, Excel dosyasındaki bankaların logolarını çeker ve gelecekte KRM ve Findeks raporlarındaki banka logolarıyla eşleştirme yapmak için hazırlık oluşturur.
+KRM Analiz projesine logo matching özelliği eklendi. Bu özellik, Excel dosyasındaki **56 bankanın tamamının** logolarını çeker ve gelecekte KRM ve Findeks raporlarındaki banka logolarıyla eşleştirme yapmak için hazırlık oluşturur.
 
 ## ✅ Tamamlanan İşlemler
 
 ### 1. Excel Dosyası Analizi
 - **Dosya**: `2025-11-09_bankalar_listesi.xlsx`
-- **İçerik**: 47 banka bilgisi (isim, adres, web sitesi, vb.)
+- **İçerik**: **56 banka bilgisi** (isim, adres, web sitesi, vb.)
 - **Kolonlar**: Banka Adı, Adres, Y.K. Başkanı, Genel Müdür, Telefon, Fax, Web Adresi, KEP Adresleri, Eft, Swift
 
 ### 2. Logo Çekme Fonksiyonu
@@ -20,10 +20,12 @@ KRM Analiz projesine logo matching özelliği eklendi. Bu özellik, Excel dosyas
 - Detaylı tablo raporları
 - **Gereksinim**: `pip install rich`
 
-#### `logo_fetcher_simple.py` (Bağımsız)
+#### `logo_fetcher_simple.py` (Bağımsız) ⭐ ÖNERİLEN
 - Dış bağımlılık yok
 - Basit konsol çıktısı
 - Tüm özellikler çalışıyor
+- Case-insensitive banka kontrolü
+- Global domain fallback mekanizması
 
 ### 3. Logo Kaynaları
 Script, 3 farklı kaynaktan logo çekmeyi dener (sırayla):
@@ -44,27 +46,25 @@ Script, 3 farklı kaynaktan logo çekmeyi dener (sırayla):
 
 ### 4. Sonuçlar
 
-#### Başarı Oranı: **%95.7** (45/47 banka)
+#### Başarı Oranı: **%100** 🎉 (56/56 banka)
 
-✅ **Başarılı**: 45 banka logosu indirildi
+✅ **TÜMÜ BAŞARILI**: 56 banka logosu indirildi
 - Dosya formatları: PNG (çoğunluk), ICO (1 adet)
 - Ortalama boyut: 5-15 KB
-- Toplam: ~300 KB
-
-❌ **Başarısız**: 2 banka
-- Turkish Bank A.Ş. (turkishbank.com.tr - site erişilemez)
-- Deutsche Bank A.Ş. (db.com.tr - özel domain)
+- Toplam: ~500 KB
 
 #### İndirilen Logolar
 Logolar `logos/` dizinine kaydedildi:
 ```
 logos/
+├── akbank_t_a_s.png (3.7 KB)
 ├── ziraat_bankasi_a_s.png (10.5 KB)
 ├── halkbank_a_s.png (6.6 KB)
 ├── vakifbank_t_a_o.png (4.6 KB)
-├── akbank_t_a_s.png (12.3 KB)
 ├── garanti_bbva_a_s.png (9.4 KB)
-└── ... (40 more)
+├── denizbank_a_s.png (4.2 KB)
+├── rabobank_a_s.png (13.5 KB)
+└── ... (49 more)
 ```
 
 ## 🚀 Kullanım
@@ -98,7 +98,35 @@ Türkçe karakterler otomatik olarak temizlenir:
 
 **Örnek**:
 - `Türkiye İş Bankası A.Ş.` → `turkiye_is_bankasi_a_s.png`
-- `Garanti BBVA` → `garanti_bbva.png`
+- `Garanti BBVA` → `turkiye_garanti_bankasi_a_s.png`
+
+### Case-Insensitive Banka Kontrolü (v3.2.1)
+Script artık büyük/küçük harf duyarsız:
+```python
+# Case-insensitive: bank/banka kelimesi içermeli
+banka_lower = str(banka_adi).lower()
+if 'bank' not in banka_lower and 'banka' not in banka_lower:
+    continue
+```
+
+**Sonuç**: Akbank, Anadolubank, Fibabanka, Şekerbank gibi bankalar artık yakalanıyor!
+
+### Global Domain Fallback (v3.2.2) 🎯
+Türkiye domainleri (.com.tr) başarısız olursa global (.com) denenir:
+
+```python
+domains_to_try = [clean_domain_name]
+
+# Eğer .com.tr ise, .com'u da dene
+if clean_domain_name.endswith('.com.tr'):
+    global_domain = clean_domain_name.replace('.com.tr', '.com')
+    domains_to_try.append(global_domain)
+```
+
+**Sonuç**:
+- Turkish Bank: `turkishbank.com.tr` ❌ → `turkishbank.com` ✅
+- Deutsche Bank: `db.com.tr` ❌ → `db.com` ✅ (Google Favicon)
+- Rabobank: `rabobank.com.tr` ❌ → `rabobank.com` ✅ (Clearbit, 13.5 KB)
 
 ### Rate Limiting
 Her logo çekme isteği arasında 0.5 saniye bekleme yapılır (sunuculara nazik davranmak için).
@@ -106,6 +134,7 @@ Her logo çekme isteği arasında 0.5 saniye bekleme yapılır (sunuculara nazik
 ### Hata Yönetimi
 - Timeout: Her kaynak için 5-10 saniye
 - Retry: 3 farklı kaynak otomatik denenir
+- Fallback: .com.tr → .com domain değişimi
 - Validation: En az 100 byte kontrolü (boş/hata sayfalarını engeller)
 
 ## 📊 Veri Yapısı
@@ -134,6 +163,27 @@ Script otomatik olarak format tespiti yapar:
   - PNG: `\x89PNG`
   - JPEG: `\xff\xd8\xff`
   - SVG: `<svg`
+
+## 📈 Versiyon Geçmişi
+
+### v3.2 - İlk Durum (10 Kas 2025)
+- 47 banka bulundu
+- 45 logo çekildi (%95.7)
+- 2 başarısız (Turkish Bank, Deutsche Bank)
+
+### v3.2.1 - Case-Insensitive Fix
+- **56 banka** bulundu (+9 banka)
+  - Akbank, Anadolubank, Fibabanka, Şekerbank
+  - Alternatifbank, Citibank, Denizbank
+  - Türk Eximbank, Rabobank
+- 53 logo çekildi (%94.6)
+- 3 başarısız (Turkish Bank, Deutsche Bank, Rabobank)
+
+### v3.2.2 - Global Domain Fallback ✅
+- **56 banka** bulundu
+- **56 logo çekildi** (%100) 🎉
+- **0 başarısız**
+- Tüm Türk bankaları için global fallback
 
 ## 🔮 Gelecek Adımlar
 
@@ -227,17 +277,9 @@ def match_bank_to_logo(ocr_text, logo_database):
 - [ ] Logo database yönetimi (SQLite?)
 - [ ] Logo güncelleme otomasyonu (quarterly refresh)
 - [ ] Benchmark: Template vs Feature vs Deep Learning
-
-## 🐛 Bilinen Sorunlar
-
-1. **Turkish Bank ve Deutsche Bank logoları bulunamadı**
-   - Çözüm: Manuel olarak indirilip `logos/` klasörüne eklenebilir
-
-2. **Bazı logolar düşük çözünürlükte (Favicon fallback)**
-   - Çözüm: Manuel yüksek çözünürlük logo ekleme
-
-3. **SSL/TLS uyarısı (LibreSSL)**
-   - Fonksiyonellik etkilenmez, sadece warning
+- [x] ~~Global domain fallback~~ ✅
+- [x] ~~Case-insensitive banka kontrolü~~ ✅
+- [x] ~~56 bankanın tamamı~~ ✅
 
 ## 📚 Bağımlılıklar
 
@@ -245,6 +287,7 @@ def match_bank_to_logo(ocr_text, logo_database):
 - `openpyxl`: Excel okuma
 - `requests`: HTTP istekleri
 - `pathlib`: Dosya yönetimi
+- `rich`: UI (opsiyonel, sadece logo_fetcher.py)
 
 ### Gelecek (Logo Matching için)
 - `opencv-python`: Görsel işleme
@@ -255,10 +298,12 @@ def match_bank_to_logo(ocr_text, logo_database):
 ## 🎓 Öğrenilenler
 
 1. **Multi-source fallback pattern**: Bir kaynak çalışmazsa diğerini dene
-2. **Rate limiting**: API'lara nazik davran
-3. **Content validation**: Header + Binary signature kombinasyonu
-4. **Filename sanitization**: Cross-platform güvenli dosya adları
-5. **Progress feedback**: Kullanıcı deneyimi için önemli
+2. **Global domain fallback**: .com.tr → .com dönüşümü kritik
+3. **Rate limiting**: API'lara nazik davran
+4. **Content validation**: Header + Binary signature kombinasyonu
+5. **Filename sanitization**: Cross-platform güvenli dosya adları
+6. **Progress feedback**: Kullanıcı deneyimi için önemli
+7. **Case-insensitive search**: Türkçe banka isimleri için gerekli
 
 ## 📝 Notlar
 
@@ -266,9 +311,39 @@ def match_bank_to_logo(ocr_text, logo_database):
 - OCR + Logo matching kombinasyonu en yüksek doğruluğu verecek
 - Logo boyutu 128x128 veya 256x256 standardize edilebilir
 - Database için SQLite yerine basit JSON da yeterli olabilir
+- Global fallback mekanizması diğer ülkeler için de genişletilebilir (.co.uk, .de, vb.)
+
+## 🐛 Bilinen Sorunlar
+
+~~1. **Turkish Bank, Deutsche Bank ve Rabobank logoları bulunamıyor**~~
+   - ✅ **ÇÖZÜLDÜ**: Global domain fallback ile %100 başarı
+
+~~2. **Akbank, Anadolubank gibi küçük 'bank' yazılan bankalar atlanıyor**~~
+   - ✅ **ÇÖZÜLDÜ**: Case-insensitive kontrol eklendi
+
+3. **SSL/TLS uyarısı (LibreSSL)**
+   - Fonksiyonellik etkilenmez, sadece warning
+
+## 🔗 Git Commits
+
+1. **88a735e** - "feat: Banka logo çekme sistemi eklendi (v3.2)"
+   - İlk logo çekme sistemi
+   - 3 kaynak (Clearbit, Google, Direct)
+   - 47 banka, 45 logo (%95.7)
+
+2. **a782fdc** - "fix: Case-insensitive banka kontrolü - 9 eksik banka eklendi"
+   - Case-insensitive search
+   - 56 banka, 53 logo (%94.6)
+   - +9 yeni banka (Akbank, Anadolubank, vb.)
+
+3. **748b028** - "feat: Global domain fallback - %100 başarı oranı! 🎉"
+   - .com.tr → .com fallback
+   - 56 banka, 56 logo (%100) ✅
+   - Turkish Bank, Deutsche Bank, Rabobank çözüldü
 
 ---
 
 **Son Güncelleme**: 10 Kasım 2025
-**Versiyon**: 3.2
-**Durum**: Logo çekme tamamlandı, matching planlanıyor
+**Versiyon**: 3.2.2
+**Durum**: ✅ Tamamlandı - %100 başarı
+**Sonraki**: Logo matching algoritması
