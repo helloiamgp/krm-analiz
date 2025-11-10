@@ -24,13 +24,18 @@ jobs:
 
     - name: Install Tesseract OCR
       run: |
-        choco install tesseract -y
+        choco install tesseract -y --no-progress
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        refreshenv
         echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: pwsh
 
     - name: Verify Tesseract installation
       run: |
-        tesseract --version
+        $env:Path += ";C:\Program Files\Tesseract-OCR"
+        & 'C:\Program Files\Tesseract-OCR\tesseract.exe' --version
         echo "Tesseract kuruldu!"
+      shell: pwsh
 
     - name: Install dependencies
       run: |
