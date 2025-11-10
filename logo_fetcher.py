@@ -112,64 +112,73 @@ def fetch_logo(domain: str, bank_name: str, output_dir: Path) -> Optional[Path]:
     # Dosya adını oluştur
     safe_name = sanitize_filename(bank_name)
 
-    # Her kaynağı dene
-    for source in LOGO_SOURCES:
-        try:
-            url = source['url_template'].format(domain=clean_domain_name)
+    # Deneyeceğimiz domainler (fallback ile)
+    domains_to_try = [clean_domain_name]
+
+    # Eğer .com.tr ise, .com'u da dene
+    if clean_domain_name.endswith('.com.tr'):
+        global_domain = clean_domain_name.replace('.com.tr', '.com')
+        domains_to_try.append(global_domain)
+
+    # Her domain için tüm kaynakları dene
+    for try_domain in domains_to_try:
+        for source in LOGO_SOURCES:
+            try:
+                url = source['url_template'].format(domain=try_domain)
 
             # HTTP isteği yap
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                }
 
-            response = requests.get(
-                url,
-                timeout=source['timeout'],
-                headers=headers,
-                allow_redirects=True
-            )
+                response = requests.get(
+                    url,
+                    timeout=source['timeout'],
+                    headers=headers,
+                    allow_redirects=True
+                )
 
-            # Başarılı mı?
-            if response.status_code == 200 and len(response.content) > 100:  # En az 100 byte olmalı
-                # Content-Type'dan uzantıyı belirle
-                content_type = response.headers.get('Content-Type', '').lower()
+                # Başarılı mı?
+                if response.status_code == 200 and len(response.content) > 100:  # En az 100 byte olmalı
+                    # Content-Type'dan uzantıyı belirle
+                    content_type = response.headers.get('Content-Type', '').lower()
 
-                if 'png' in content_type:
-                    ext = 'png'
-                elif 'jpeg' in content_type or 'jpg' in content_type:
-                    ext = 'jpg'
-                elif 'svg' in content_type:
-                    ext = 'svg'
-                elif 'webp' in content_type:
-                    ext = 'webp'
-                elif 'ico' in content_type or 'icon' in content_type:
-                    ext = 'ico'
-                else:
-                    # İçerik başlangıcına bakarak tahmin et
-                    if response.content.startswith(b'\x89PNG'):
+                    if 'png' in content_type:
                         ext = 'png'
-                    elif response.content.startswith(b'\xff\xd8\xff'):
+                    elif 'jpeg' in content_type or 'jpg' in content_type:
                         ext = 'jpg'
-                    elif b'<svg' in response.content[:100]:
+                    elif 'svg' in content_type:
                         ext = 'svg'
+                    elif 'webp' in content_type:
+                        ext = 'webp'
+                    elif 'ico' in content_type or 'icon' in content_type:
+                        ext = 'ico'
                     else:
-                        ext = 'png'  # Default
+                        # İçerik başlangıcına bakarak tahmin et
+                        if response.content.startswith(b'\x89PNG'):
+                            ext = 'png'
+                        elif response.content.startswith(b'\xff\xd8\xff'):
+                            ext = 'jpg'
+                        elif b'<svg' in response.content[:100]:
+                            ext = 'svg'
+                        else:
+                            ext = 'png'  # Default
 
-                # Dosya yolunu oluştur
-                file_path = output_dir / f"{safe_name}.{ext}"
+                    # Dosya yolunu oluştur
+                    file_path = output_dir / f"{safe_name}.{ext}"
 
-                # Kaydet
-                with open(file_path, 'wb') as f:
-                    f.write(response.content)
+                    # Kaydet
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
 
-                return file_path
+                    return file_path
 
-        except requests.exceptions.Timeout:
-            continue  # Sonraki kaynağı dene
-        except requests.exceptions.RequestException:
-            continue  # Sonraki kaynağı dene
-        except Exception:
-            continue  # Sonraki kaynağı dene
+            except requests.exceptions.Timeout:
+                continue  # Sonraki kaynağı dene
+            except requests.exceptions.RequestException:
+                continue  # Sonraki kaynağı dene
+            except Exception:
+                continue  # Sonraki kaynağı dene
 
     return None
 

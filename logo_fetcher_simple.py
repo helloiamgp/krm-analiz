@@ -62,43 +62,53 @@ def fetch_logo(domain: str, bank_name: str, output_dir: Path) -> Optional[Path]:
 
     safe_name = sanitize_filename(bank_name)
 
-    for source in LOGO_SOURCES:
-        try:
-            url = source['url_template'].format(domain=clean_domain_name)
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-            }
-            response = requests.get(url, timeout=source['timeout'], headers=headers, allow_redirects=True)
+    # Deneyeceğimiz domainler (fallback ile)
+    domains_to_try = [clean_domain_name]
 
-            if response.status_code == 200 and len(response.content) > 100:
-                content_type = response.headers.get('Content-Type', '').lower()
+    # Eğer .com.tr ise, .com'u da dene
+    if clean_domain_name.endswith('.com.tr'):
+        global_domain = clean_domain_name.replace('.com.tr', '.com')
+        domains_to_try.append(global_domain)
 
-                if 'png' in content_type:
-                    ext = 'png'
-                elif 'jpeg' in content_type or 'jpg' in content_type:
-                    ext = 'jpg'
-                elif 'svg' in content_type:
-                    ext = 'svg'
-                elif 'webp' in content_type:
-                    ext = 'webp'
-                elif 'ico' in content_type or 'icon' in content_type:
-                    ext = 'ico'
-                else:
-                    if response.content.startswith(b'\x89PNG'):
+    # Her domain için tüm kaynakları dene
+    for try_domain in domains_to_try:
+        for source in LOGO_SOURCES:
+            try:
+                url = source['url_template'].format(domain=try_domain)
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+                }
+                response = requests.get(url, timeout=source['timeout'], headers=headers, allow_redirects=True)
+
+                if response.status_code == 200 and len(response.content) > 100:
+                    content_type = response.headers.get('Content-Type', '').lower()
+
+                    if 'png' in content_type:
                         ext = 'png'
-                    elif response.content.startswith(b'\xff\xd8\xff'):
+                    elif 'jpeg' in content_type or 'jpg' in content_type:
                         ext = 'jpg'
-                    elif b'<svg' in response.content[:100]:
+                    elif 'svg' in content_type:
                         ext = 'svg'
+                    elif 'webp' in content_type:
+                        ext = 'webp'
+                    elif 'ico' in content_type or 'icon' in content_type:
+                        ext = 'ico'
                     else:
-                        ext = 'png'
+                        if response.content.startswith(b'\x89PNG'):
+                            ext = 'png'
+                        elif response.content.startswith(b'\xff\xd8\xff'):
+                            ext = 'jpg'
+                        elif b'<svg' in response.content[:100]:
+                            ext = 'svg'
+                        else:
+                            ext = 'png'
 
-                file_path = output_dir / f"{safe_name}.{ext}"
-                with open(file_path, 'wb') as f:
-                    f.write(response.content)
-                return file_path
-        except:
-            continue
+                    file_path = output_dir / f"{safe_name}.{ext}"
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
+                    return file_path
+            except:
+                continue
     return None
 
 def read_banks_from_excel(excel_path: Path) -> List[Dict[str, str]]:
