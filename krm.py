@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
+from difflib import SequenceMatcher
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -972,19 +973,69 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
 
     return kurumlar
 
-def calculate_match_score(krm_data: Dict[str, Any], findeks_data: Dict[str, Any]) -> float:
+def normalize_bank_name(name: str) -> str:
+    """Banka ismini normalize et (büyük harf, boşluksuz)"""
+    # Türkçe karakterleri dönüştür
+    replacements = {
+        'İ': 'I', 'Ş': 'S', 'Ğ': 'G', 'Ü': 'U', 'Ö': 'O', 'Ç': 'C',
+        'ı': 'i', 'ş': 's', 'ğ': 'g', 'ü': 'u', 'ö': 'o', 'ç': 'c'
+    }
+    for tr_char, en_char in replacements.items():
+        name = name.replace(tr_char, en_char)
+
+    # Gereksiz kelimeleri çıkar
+    remove_words = ['BANKASI', 'BANK', 'A.S.', 'A.Ş.', 'T.A.Ş.', 'T.A.S.']
+    name_upper = name.upper()
+    for word in remove_words:
+        name_upper = name_upper.replace(word, '')
+
+    # Boşlukları temizle
+    return ''.join(name_upper.split())
+
+def calculate_name_similarity(name1: str, name2: str) -> float:
+    """İki banka ismi arasındaki benzerlik skorunu hesapla (0-1 arası, 1=tam eşleşme)"""
+    norm1 = normalize_bank_name(name1)
+    norm2 = normalize_bank_name(name2)
+
+    # Tam eşleşme kontrolü
+    if norm1 == norm2:
+        return 1.0
+
+    # Biri diğerini içeriyorsa
+    if norm1 in norm2 or norm2 in norm1:
+        return 0.9
+
+    # SequenceMatcher ile benzerlik
+    return SequenceMatcher(None, norm1, norm2).ratio()
+
+def calculate_match_score(krm_data: Dict[str, Any], findeks_data: Dict[str, Any], krm_kaynak: str = '') -> float:
     """
     İki kaynak arasındaki benzerlik skorunu hesapla (düşük = iyi).
 
     Args:
         krm_data: KRM kaynak bilgileri
         findeks_data: Findeks kurum bilgileri
+        krm_kaynak: KRM kaynak ismi (isim benzerliği için)
 
     Returns:
         Toplam fark skoru
     """
     score = 0.0
     match_count = 0
+
+    # İsim benzerliği (EN ÖNEMLİ - önce isme bak!)
+    if krm_kaynak and findeks_data.get('kurum'):
+        name_sim = calculate_name_similarity(krm_kaynak, findeks_data['kurum'])
+        # İsim benzerliği yüksekse (>0.7), skorun çok düşük olması lazım
+        # İsim benzerliği düşükse (<0.3), bu eşleşme muhtemelen yanlış
+        if name_sim < 0.3:
+            # İsim çok farklıysa, bu eşleşmeyi penalize et
+            return float('inf')
+
+        # İsim benzerliğini ters çevir (1.0 benzerlik = 0.0 skor, 0.3 benzerlik = 0.7 skor)
+        name_score = (1.0 - name_sim) * 5.0  # 5x ağırlık - isim ÇOK önemli!
+        score += name_score
+        match_count += 1
 
     # Nakdi Limit
     krm_nakdi_limit = krm_data.get('nakdi_limit', 0)
@@ -1083,7 +1134,7 @@ def find_best_matches(
         best_score = float('inf')
 
         for findeks_inst in findeks_data:
-            score = calculate_match_score(krm_combined, findeks_inst)
+            score = calculate_match_score(krm_combined, findeks_inst, kaynak)
             if score < best_score:
                 best_score = score
                 best_match = findeks_inst
@@ -1732,7 +1783,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     findeks_matches = result.get('findeks_matches', [])
     findeks_map = {match['krm_kaynak']: match['findeks_kurum'] for match in findeks_matches}
 
-    detail_data = [['Kaynak', 'Vade', 'Findeks\nKurum', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
+    detail_data = [['Kaynak', 'Findeks\nKurum', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%', 'Vade']]
 
     for kaynak in sorted(result['active_sources']):
         limit_data = result['limits'].get(kaynak, {})
@@ -1757,7 +1808,6 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
 
         detail_data.append([
             kaynak,
-            vade_str,
             findeks_kurum,
             format_number(grup_limit),
             format_number(nakdi_limit),
@@ -1766,10 +1816,11 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             format_number(gayrinakdi_risk),
             format_number(toplam_limit),
             format_number(toplam_risk),
-            f"{kullanim:.1f}"
+            f"{kullanim:.1f}",
+            vade_str
         ])
 
-    detail_table = RLTable(detail_data, colWidths=[1.7*cm, 1.5*cm, 2*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 0.9*cm])
+    detail_table = RLTable(detail_data, colWidths=[1.7*cm, 2*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 0.9*cm, 1.5*cm])
 
     # Zebra stripes
     table_style_commands = [
