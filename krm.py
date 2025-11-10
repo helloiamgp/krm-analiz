@@ -753,10 +753,14 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                     gecikme_idx = indices.get('gecikme', -1)
 
                     for row in table[2:]:
-                        if not row or not row[0] or 'KAYNAK-' not in str(row[0]):
+                        if not row or not row[0]:
                             continue
 
                         kaynak = str(row[0]).strip()
+
+                        # Boş veya toplam satırlarını atla
+                        if not kaynak or kaynak.lower() in ['toplam', 'genel toplam', 'total']:
+                            continue
 
                         try:
                             risks[kaynak] = {
@@ -1699,7 +1703,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
     findeks_matches = result.get('findeks_matches', [])
     findeks_map = {match['krm_kaynak']: match['findeks_kurum'] for match in findeks_matches}
 
-    detail_data = [['Kaynak', 'Findeks\nKurum', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
+    detail_data = [['Kaynak', 'Vade', 'Findeks\nKurum', 'Grup Limit', 'Nakdi\nLimit', 'Nakdi\nRisk', 'Gayri.\nLimit', 'Gayri.\nRisk', 'Top.\nLimit', 'Top.\nRisk', 'Kul.\n%']]
 
     for kaynak in sorted(result['active_sources']):
         limit_data = result['limits'].get(kaynak, {})
@@ -1713,6 +1717,10 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
         toplam_limit = limit_data.get('toplam', 0)
         toplam_risk = risk_data.get('toplam', 0)
 
+        # Vade tarihi
+        revize_tarihi = limit_data.get('revize_tarihi')
+        vade_str = revize_tarihi.strftime('%d.%m.%Y') if revize_tarihi else '-'
+
         kullanim = (toplam_risk / toplam_limit * 100) if toplam_limit > 0 else 0
 
         # Findeks eşleştirmesini bul
@@ -1720,6 +1728,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
 
         detail_data.append([
             kaynak,
+            vade_str,
             findeks_kurum,
             format_number(grup_limit),
             format_number(nakdi_limit),
@@ -1731,7 +1740,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             f"{kullanim:.1f}"
         ])
 
-    detail_table = RLTable(detail_data, colWidths=[1.8*cm, 2.2*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1.6*cm, 1*cm])
+    detail_table = RLTable(detail_data, colWidths=[1.7*cm, 1.5*cm, 2*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 0.9*cm])
 
     # Zebra stripes
     table_style_commands = [
