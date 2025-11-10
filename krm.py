@@ -885,32 +885,70 @@ def compare_logos(findeks_logo_path: Path, logos_dir: Path) -> Optional[str]:
         import imagehash
         from PIL import Image
 
-        # Findeks logosunun hash'ini hesapla
+        # Findeks logosunu yükle ve normalize et
         findeks_img = Image.open(findeks_logo_path).convert('RGB')
-        findeks_hash = imagehash.average_hash(findeks_img, hash_size=16)
+
+        # Logo çok küçükse atla
+        if findeks_img.size[0] < 20 or findeks_img.size[1] < 20:
+            return None
+
+        # Boyutlandır (daha iyi eşleşme için)
+        findeks_img = findeks_img.resize((128, 128), Image.Resampling.LANCZOS)
+
+        # Birden fazla hash algoritması kullan
+        findeks_avg = imagehash.average_hash(findeks_img, hash_size=8)
+        findeks_phash = imagehash.phash(findeks_img, hash_size=8)
+        findeks_dhash = imagehash.dhash(findeks_img, hash_size=8)
 
         best_match = None
-        best_distance = float('inf')
+        best_combined_distance = float('inf')
+        all_matches = []
 
         # Tüm logoları karşılaştır
         for logo_file in logos_dir.glob('*.png'):
             try:
                 logo_img = Image.open(logo_file).convert('RGB')
-                logo_hash = imagehash.average_hash(logo_img, hash_size=16)
+                logo_img = logo_img.resize((128, 128), Image.Resampling.LANCZOS)
 
-                distance = findeks_hash - logo_hash
+                logo_avg = imagehash.average_hash(logo_img, hash_size=8)
+                logo_phash = imagehash.phash(logo_img, hash_size=8)
+                logo_dhash = imagehash.dhash(logo_img, hash_size=8)
 
-                if distance < best_distance:
-                    best_distance = distance
+                # 3 algoritmanın ortalamasını al
+                avg_distance = findeks_avg - logo_avg
+                phash_distance = findeks_phash - logo_phash
+                dhash_distance = findeks_dhash - logo_dhash
+
+                combined_distance = (avg_distance + phash_distance + dhash_distance) / 3.0
+
+                all_matches.append({
+                    'file': logo_file.name,
+                    'distance': combined_distance,
+                    'avg': avg_distance,
+                    'phash': phash_distance,
+                    'dhash': dhash_distance
+                })
+
+                if combined_distance < best_combined_distance:
+                    best_combined_distance = combined_distance
                     best_match = logo_file.name
             except Exception as e:
                 continue
 
-        # 15'ten küçük mesafe = iyi eşleşme
-        if best_match and best_distance < 15:
+        # Debug: En iyi 5 eşleşmeyi göster
+        all_matches.sort(key=lambda x: x['distance'])
+        console.print(f"[dim]  Logo eşleştirme sonuçları (en iyi 5):[/dim]")
+        for i, match in enumerate(all_matches[:5], 1):
+            bank = logo_filename_to_bank_name(match['file'])
+            console.print(f"[dim]    {i}. {bank}: {match['distance']:.1f} (avg:{match['avg']}, p:{match['phash']}, d:{match['dhash']})[/dim]")
+
+        # Threshold: 20'den küçük = iyi eşleşme (daha esnek)
+        if best_match and best_combined_distance < 20:
             bank_name = logo_filename_to_bank_name(best_match)
-            console.print(f"[dim]  Logo eşleşti: {bank_name} (mesafe: {best_distance})[/dim]")
+            console.print(f"[green]✓ Logo eşleşti: {bank_name} (mesafe: {best_combined_distance:.1f})[/green]")
             return bank_name
+        else:
+            console.print(f"[yellow]⚠ Logo eşleştirilemedi (en yakın: {best_combined_distance:.1f})[/yellow]")
 
         return None
 
@@ -919,6 +957,7 @@ def compare_logos(findeks_logo_path: Path, logos_dir: Path) -> Optional[str]:
         console.print("[dim]Kurulum: pip install imagehash[/dim]")
         return None
     except Exception as e:
+        console.print(f"[yellow]⚠ Logo eşleştirme hatası: {e}[/yellow]")
         return None
 
 def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
