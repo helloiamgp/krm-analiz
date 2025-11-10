@@ -930,6 +930,19 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                     gayri_risk_matches = re.findall(r'Gayri\s+Nakdi\s+([\d.,]+)', risk_section)
                     toplam_risk_matches = re.findall(r'Toplam\s+([\d.,]+)', risk_section)
 
+                    # Vade tarihini bul (Genel Revize Vade / Son Revize Tarihi)
+                    revize_tarihi = None
+                    # Tarih formatları: DD.MM.YYYY, DD/MM/YYYY
+                    date_patterns = [
+                        r'(?:Genel\s+Revize|Son\s+Revize|Vade).*?(\d{2}[./]\d{2}[./]\d{4})',
+                        r'(\d{2}[./]\d{2}[./]\d{4})',
+                    ]
+                    for pattern in date_patterns:
+                        date_match = re.search(pattern, block)
+                        if date_match:
+                            revize_tarihi = parse_date(date_match.group(1))
+                            break
+
                     kurum_data = {
                         'sayfa': page_num + 1,
                         'kurum': bank_name,
@@ -940,7 +953,7 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                         'nakdi_risk': parse_number_ocr(nakdi_risk_matches[-1]) if nakdi_risk_matches else 0.0,
                         'gayrinakdi_risk': parse_number_ocr(gayri_risk_matches[-1]) if gayri_risk_matches else 0.0,
                         'toplam_risk': parse_number_ocr(toplam_risk_matches[-1]) if toplam_risk_matches else 0.0,
-                        'revize_tarihi': None,
+                        'revize_tarihi': revize_tarihi,
                     }
 
                     if any([kurum_data['nakdi_limit'], kurum_data['gayrinakdi_limit'],
@@ -1013,6 +1026,17 @@ def calculate_match_score(krm_data: Dict[str, Any], findeks_data: Dict[str, Any]
         score += diff * 1
         match_count += 1
 
+    # Vade Tarihleri (ÇOK ÖNEMLİ - yüksek ağırlık)
+    krm_vade = krm_data.get('revize_tarihi')
+    findeks_vade = findeks_data.get('revize_tarihi')
+    if krm_vade and findeks_vade:
+        # Tarihler arasındaki gün farkı
+        days_diff = abs((krm_vade - findeks_vade).days)
+        # 0 gün = perfect match (0.0), 30 gün = 1.0, 60+ gün = çok kötü
+        date_score = min(days_diff / 30.0, 3.0)  # Max 3.0 penalty
+        score += date_score * 3.0  # Yüksek ağırlık - vade çok önemli!
+        match_count += 1
+
     if match_count == 0:
         return float('inf')
 
@@ -1052,6 +1076,7 @@ def find_best_matches(
             'nakdi_risk': risk_data.get('nakdi', 0),
             'gayrinakdi_risk': risk_data.get('gayrinakdi', 0),
             'toplam_risk': risk_data.get('toplam', 0),
+            'revize_tarihi': limit_data.get('revize_tarihi'),
         }
 
         best_match = None
