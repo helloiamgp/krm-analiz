@@ -1888,6 +1888,9 @@ def main() -> None:
         border_style="cyan"
     ))
 
+    # Logo kontrolü ve indirme (ilk çalıştırma)
+    check_and_download_logos()
+
     # Türkçe font desteğini aktifleştir
     register_fonts()
 
