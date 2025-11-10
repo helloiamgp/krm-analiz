@@ -22,14 +22,28 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Install Tesseract OCR
+      run: |
+        choco install tesseract -y
+        echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Verify Tesseract installation
+      run: |
+        tesseract --version
+        echo "Tesseract kuruldu!"
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Build EXE with PyInstaller
+    - name: Build EXE with PyInstaller (Tesseract dahil)
       run: |
-        pyinstaller --onefile --name="KRM-Analiz" --add-data="fonts;fonts" --console --clean krm.py
+        pyinstaller --onefile --name="KRM-Analiz" `
+          --add-data="fonts;fonts" `
+          --add-binary="C:\Program Files\Tesseract-OCR\tesseract.exe;." `
+          --add-data="C:\Program Files\Tesseract-OCR\tessdata;tessdata" `
+          --console --clean krm.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4

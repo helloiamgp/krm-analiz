@@ -687,9 +687,28 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
         import pytesseract
         from PIL import Image
         import shutil
+        import sys
+        import os
+
+        # PyInstaller ile paketlenmiş EXE ise Tesseract path'ini ayarla
+        if getattr(sys, 'frozen', False):
+            # EXE içindeyiz
+            base_path = sys._MEIPASS
+            tesseract_cmd = os.path.join(base_path, 'tesseract.exe')
+            if os.path.exists(tesseract_cmd):
+                pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+                # Tessdata path'ini de ayarla
+                os.environ['TESSDATA_PREFIX'] = os.path.join(base_path, 'tessdata')
 
         # Tesseract binary'sinin varlığını kontrol et
-        if not shutil.which('tesseract'):
+        tesseract_available = False
+        try:
+            pytesseract.get_tesseract_version()
+            tesseract_available = True
+        except:
+            tesseract_available = shutil.which('tesseract') is not None
+
+        if not tesseract_available:
             console.print(f"[yellow]⚠ Tesseract OCR bulunamadı. Findeks eşleştirmesi devre dışı.[/yellow]")
             console.print(f"[dim]Tesseract kurmak için: https://github.com/tesseract-ocr/tesseract[/dim]")
             return []
