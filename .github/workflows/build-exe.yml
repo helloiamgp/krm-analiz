@@ -62,6 +62,8 @@ jobs:
           --add-data="fonts;fonts" `
           --add-binary="C:\Program Files\Tesseract-OCR\tesseract.exe;." `
           --add-data="C:\Program Files\Tesseract-OCR\tessdata;tessdata" `
+          --hidden-import=openpyxl `
+          --hidden-import=requests `
           --console --clean krm.py
 
     - name: Upload artifact
