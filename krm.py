@@ -686,6 +686,13 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
         import fitz
         import pytesseract
         from PIL import Image
+        import shutil
+
+        # Tesseract binary'sinin varlığını kontrol et
+        if not shutil.which('tesseract'):
+            console.print(f"[yellow]⚠ Tesseract OCR bulunamadı. Findeks eşleştirmesi devre dışı.[/yellow]")
+            console.print(f"[dim]Tesseract kurmak için: https://github.com/tesseract-ocr/tesseract[/dim]")
+            return []
 
         pdf = fitz.open(str(pdf_path))
 
