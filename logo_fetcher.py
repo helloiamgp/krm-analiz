@@ -197,10 +197,12 @@ def read_banks_from_excel(excel_path: Path) -> List[Dict[str, str]]:
             continue
 
         # Sadece gerçek bankaları al (kategori başlıklarını atla)
-        if (banka_adi.strip().startswith(' ') or
-            ('Bankası' not in str(banka_adi) and
-             'Bank' not in str(banka_adi) and
-             'Banka' not in str(banka_adi))):
+        if banka_adi.strip().startswith(' '):
+            continue
+
+        # Case-insensitive: bank/banka kelimesi içermeli
+        banka_lower = str(banka_adi).lower()
+        if 'bank' not in banka_lower and 'banka' not in banka_lower:
             continue
 
         # Domain çıkar
