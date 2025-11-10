@@ -41,7 +41,7 @@ PASSIVE_SOURCE_CUTOFF_DAYS = 180
 HIGH_USAGE_THRESHOLD = 95.0
 CRITICAL_USAGE_THRESHOLD = 100.0
 CRITICAL_DELAY_DAYS = 30
-FINDEKS_MATCH_THRESHOLD = 0.15  # %15 tolerans
+FINDEKS_MATCH_THRESHOLD = 2.5  # Fuzzy matching ile daha yüksek threshold
 
 # Logo çekme kaynakları
 LOGO_SOURCES = [
@@ -705,7 +705,8 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                         if not row or not row[0]:
                             continue
 
-                        kaynak = str(row[0]).strip()
+                        kaynak_raw = str(row[0]).strip()
+                        kaynak = clean_source_name(kaynak_raw)
 
                         # Boş veya toplam satırlarını atla
                         if not kaynak or kaynak.lower() in ['toplam', 'genel toplam', 'total']:
@@ -761,7 +762,8 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                         if not row or not row[0]:
                             continue
 
-                        kaynak = str(row[0]).strip()
+                        kaynak_raw = str(row[0]).strip()
+                        kaynak = clean_source_name(kaynak_raw)
 
                         # Boş veya toplam satırlarını atla
                         if not kaynak or kaynak.lower() in ['toplam', 'genel toplam', 'total']:
@@ -781,6 +783,12 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
             continue
 
     return limits, risks
+
+def clean_source_name(raw_name: str) -> str:
+    """Kaynak ismini temizle (başındaki numaraları çıkar)"""
+    # "01 Banka", "02- Banka", "03 - Faktöring" gibi desenleri temizle
+    cleaned = re.sub(r'^\d+[\s\-\.]*', '', raw_name.strip())
+    return cleaned.strip()
 
 def clean_bank_name_ocr(raw_name: str) -> str:
     """OCR hatalarını düzelt ve banka ismini temizle."""
@@ -1140,12 +1148,13 @@ def find_best_matches(
                 best_match = findeks_inst
 
         if best_score <= threshold and best_match:
-            if best_score <= 0.05:
-                confidence = 'HIGH'
-            elif best_score <= 0.10:
-                confidence = 'MEDIUM'
+            # Yeni skorlama sistemine göre confidence seviyeleri
+            if best_score <= 0.5:
+                confidence = 'HIGH'  # Çok iyi eşleşme
+            elif best_score <= 1.5:
+                confidence = 'MEDIUM'  # Orta eşleşme
             else:
-                confidence = 'LOW'
+                confidence = 'LOW'  # Zayıf eşleşme ama kabul edilebilir
 
             matches.append({
                 'krm_kaynak': kaynak,
@@ -1158,6 +1167,17 @@ def find_best_matches(
             })
 
     matches.sort(key=lambda x: x['score'])
+
+    # Debug: Eşleştirmeleri konsola yazdır
+    if matches:
+        console.print(f"\n[green]✓ {len(matches)} Findeks eşleştirmesi bulundu:[/green]")
+        for m in matches[:5]:  # İlk 5'i göster
+            console.print(f"  • {m['krm_kaynak']} ↔ {m['findeks_kurum']} (skor: {m['score']:.2f}, güven: {m['confidence']})")
+        if len(matches) > 5:
+            console.print(f"  ... ve {len(matches) - 5} eşleşme daha")
+    else:
+        console.print("[yellow]⚠ Hiç Findeks eşleştirmesi bulunamadı![/yellow]")
+
     return matches
 
 def identify_passive_sources(limits: Dict[str, Dict[str, Any]], risks: Dict[str, Dict[str, Any]]) -> List[str]:
@@ -1820,7 +1840,7 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
             vade_str
         ])
 
-    detail_table = RLTable(detail_data, colWidths=[1.7*cm, 2*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 0.9*cm, 1.5*cm])
+    detail_table = RLTable(detail_data, colWidths=[2.5*cm, 2.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1.5*cm, 1*cm, 1.5*cm])
 
     # Zebra stripes
     table_style_commands = [
