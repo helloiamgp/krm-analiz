@@ -845,19 +845,97 @@ def parse_number_ocr(text: str) -> float:
     except:
         return 0.0
 
+def logo_filename_to_bank_name(filename: str) -> str:
+    """Logo dosya isminden banka ismini çıkar."""
+    # akbank_t_a_s.png -> Akbank
+    # turkiye_is_bankasi_a_s.png -> Türkiye İş Bankası
+
+    name = Path(filename).stem  # .png'yi çıkar
+
+    # Snake case'i ayır
+    parts = name.split('_')
+
+    # _a_s, _t_a_s gibi kısaltmaları çıkar
+    cleaned_parts = []
+    i = 0
+    while i < len(parts):
+        part = parts[i]
+        # Tek harfli kısımları atla (a, s, t gibi)
+        if len(part) == 1 and i + 1 < len(parts) and len(parts[i+1]) == 1:
+            i += 2  # "a_s" gibi ikiliyi atla
+            continue
+        if len(part) > 1:  # Gerçek kelimeler
+            cleaned_parts.append(part.capitalize())
+        i += 1
+
+    return ' '.join(cleaned_parts)
+
+def compare_logos(findeks_logo_path: Path, logos_dir: Path) -> Optional[str]:
+    """
+    Findeks logosunu logos klasöründeki logolarla karşılaştır.
+
+    Args:
+        findeks_logo_path: Findeks'ten çıkarılan logo dosyası
+        logos_dir: Logo veritabanı klasörü
+
+    Returns:
+        En benzer bankanın ismi veya None
+    """
+    try:
+        import imagehash
+        from PIL import Image
+
+        # Findeks logosunun hash'ini hesapla
+        findeks_img = Image.open(findeks_logo_path).convert('RGB')
+        findeks_hash = imagehash.average_hash(findeks_img, hash_size=16)
+
+        best_match = None
+        best_distance = float('inf')
+
+        # Tüm logoları karşılaştır
+        for logo_file in logos_dir.glob('*.png'):
+            try:
+                logo_img = Image.open(logo_file).convert('RGB')
+                logo_hash = imagehash.average_hash(logo_img, hash_size=16)
+
+                distance = findeks_hash - logo_hash
+
+                if distance < best_distance:
+                    best_distance = distance
+                    best_match = logo_file.name
+            except Exception as e:
+                continue
+
+        # 15'ten küçük mesafe = iyi eşleşme
+        if best_match and best_distance < 15:
+            bank_name = logo_filename_to_bank_name(best_match)
+            console.print(f"[dim]  Logo eşleşti: {bank_name} (mesafe: {best_distance})[/dim]")
+            return bank_name
+
+        return None
+
+    except ImportError:
+        console.print("[yellow]⚠ imagehash modülü bulunamadı. Logo eşleştirme devre dışı.[/yellow]")
+        console.print("[dim]Kurulum: pip install imagehash[/dim]")
+        return None
+    except Exception as e:
+        return None
+
 def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
     """
-    Findeks raporundan kurum bilgilerini OCR ile çıkar.
+    Findeks raporundan kurum bilgilerini LOGO EŞLEŞTİRME + OCR ile çıkar.
 
     Args:
         pdf_path: Findeks PDF dosyasının Path'i
 
     Returns:
-        Her kurum için dict listesi (gerçek banka isimleriyle)
+        Her kurum için dict listesi (logo eşleştirmesiyle gerçek banka isimleri)
     """
     import re
+    import tempfile
 
     kurumlar = []
+    logos_dir = Path("logos")
 
     try:
         # PyMuPDF ve pytesseract kullan
@@ -892,12 +970,38 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
             return []
 
         pdf = fitz.open(str(pdf_path))
+        temp_dir = Path(tempfile.mkdtemp())
 
         for page_num in range(2, len(pdf)):
             try:
                 page = pdf[page_num]
 
-                # Yüksek çözünürlükte render
+                # ÖNCE LOGOYU ÇEK - Sayfadaki görselleri al
+                bank_name_from_logo = None
+                images = page.get_images()
+
+                if images and logos_dir.exists():
+                    # İlk büyük görseli al (genelde logo)
+                    for img_index, img in enumerate(images[:3]):  # İlk 3 görseli kontrol et
+                        try:
+                            xref = img[0]
+                            base_image = pdf.extract_image(xref)
+                            image_bytes = base_image["image"]
+
+                            # Geçici dosyaya kaydet
+                            logo_temp_path = temp_dir / f"page{page_num}_img{img_index}.png"
+                            with open(logo_temp_path, "wb") as f:
+                                f.write(image_bytes)
+
+                            # Logo eşleştir
+                            bank_name_from_logo = compare_logos(logo_temp_path, logos_dir)
+                            if bank_name_from_logo:
+                                console.print(f"[green]✓ Sayfa {page_num+1}: {bank_name_from_logo} (LOGO)[/green]")
+                                break  # Logo bulundu, OCR'a gerek yok
+                        except Exception as e:
+                            continue
+
+                # Yüksek çözünürlükte render (OCR için)
                 mat = fitz.Matrix(2.5, 2.5)
                 pix = page.get_pixmap(matrix=mat)
                 img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
@@ -905,20 +1009,33 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                 # OCR yap
                 text = pytesseract.image_to_string(img, lang='eng')
 
-                # "Toplam" kelimesinin önündeki banka isimlerini bul
-                toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
+                # LOGO EŞLEŞTİRMESİ BAŞARILI MI?
+                if bank_name_from_logo:
+                    # Logo bulundu! OCR ile sadece sayıları al, isim olarak logo eşleşmesini kullan
+                    bank_name = bank_name_from_logo
+                    # Toplam bulunana kadar OCR'dan text'i parse et
+                    toplam_lines = [bank_name]  # Tek banka var
+                else:
+                    # Logo bulunamadı, OCR'dan banka ismini al
+                    toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
 
-                for bank_candidate in toplam_lines:
-                    bank_candidate = re.sub(r'^[^a-zA-Z]+', '', bank_candidate).strip()
+                for bank_candidate_raw in toplam_lines:
+                    # Logo eşleştirmesinden geliyorsa direkt kullan
+                    if bank_name_from_logo:
+                        bank_candidate = bank_name_from_logo
+                        bank_name = bank_name_from_logo
+                    else:
+                        # OCR'dan geliyorsa temizle
+                        bank_candidate = re.sub(r'^[^a-zA-Z]+', '', bank_candidate_raw).strip()
 
-                    # Banka anahtar kelimeleri
-                    if not any(keyword in bank_candidate.lower() for keyword in
-                              ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
-                               'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
-                               'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
-                        continue
+                        # Banka anahtar kelimeleri
+                        if not any(keyword in bank_candidate.lower() for keyword in
+                                  ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
+                                   'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
+                                   'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
+                            continue
 
-                    bank_name = clean_bank_name_ocr(bank_candidate)
+                        bank_name = clean_bank_name_ocr(bank_candidate)
 
                     # Banka için limit/risk bloğunu bul
                     bank_pos = text.find(bank_candidate)
@@ -975,9 +1092,16 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
 
         pdf.close()
 
+        # Geçici dosyaları temizle
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+
     except Exception as e:
         console.print(f"[yellow]⚠ Findeks OCR hatası: {e}[/yellow]")
-        console.print(f"[dim]PyMuPDF ve pytesseract gerekli. Kurulum: pip install PyMuPDF pytesseract[/dim]")
+        console.print(f"[dim]PyMuPDF ve pytesseract gerekli. Kurulum: pip install PyMuPDF pytesseract imagehash[/dim]")
 
     return kurumlar
 

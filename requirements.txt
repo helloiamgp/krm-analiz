@@ -2,9 +2,10 @@
 pdfplumber==0.11.4
 PyMuPDF==1.24.0
 
-# OCR
+# OCR & Image Processing
 pytesseract==0.3.13
 Pillow==10.4.0
+imagehash==4.3.1
 
 # Report Generation
 reportlab==4.2.0
