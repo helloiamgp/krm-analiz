@@ -49,6 +49,10 @@ example_*/
 output/
 *.pdf
 
+# Data files
+*.xlsx
+!requirements.xlsx  # Eğer requirements var ise bunu dahil et
+
 # Logs
 *.log
 
