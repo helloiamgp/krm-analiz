@@ -701,10 +701,14 @@ def parse_tables(pdf: pdfplumber.PDF, cutoff_date: Optional[datetime] = None) ->
                     son_revize_idx = indices.get('son_revize', -1)
 
                     for row in table[2:]:
-                        if not row or not row[0] or 'KAYNAK-' not in str(row[0]):
+                        if not row or not row[0]:
                             continue
 
                         kaynak = str(row[0]).strip()
+
+                        # Boş veya toplam satırlarını atla
+                        if not kaynak or kaynak.lower() in ['toplam', 'genel toplam', 'total']:
+                            continue
 
                         try:
                             revize_vade = parse_date(row[revize_vade_idx]) if revize_vade_idx >= 0 and len(row) > revize_vade_idx else None
