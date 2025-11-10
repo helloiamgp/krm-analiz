@@ -72,30 +72,41 @@ jobs:
         name: KRM-Analiz-Windows
         path: dist/KRM-Analiz.exe
 
-    - name: Create Release
+    - name: Upload to GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
         files: dist/KRM-Analiz.exe
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        draft: false
+        prerelease: false
         body: |
-          ## KRM Analiz Aracı - Windows Sürümü
+          ## 🎯 KRM Analiz Aracı v${{ github.ref_name }}
 
           ### 📥 İndirme
-          - **KRM-Analiz.exe** dosyasını indirin
+          **KRM-Analiz.exe** (90 MB) - Tesseract OCR ve Logo Çekme Dahil
+
+          ### ✨ Özellikler
+          - ✅ Tesseract OCR dahil - Findeks eşleştirmesi çalışır
+          - ✅ Otomatik logo indirme - İlk çalıştırmada
+          - ✅ Tamamen standalone - Kurulum gerektirmez
+          - ✅ Klasör bazlı analiz - Alt klasörleri tarar
 
           ### 🚀 Kullanım
-          1. KRM-Analiz.exe'yi istediğiniz klasöre kopyalayın
-          2. KRM PDF dosyalarınızı aynı klasöre koyun
-          3. KRM-Analiz.exe'yi çift tıklayın
-          4. Raporlar output/ klasöründe oluşur
+          1. **KRM-Analiz.exe** dosyasını indirin
+          2. İstediğiniz klasöre kopyalayın
+          3. KRM PDF'lerini aynı klasöre/alt klasörlere koyun
+          4. **KRM-Analiz.exe**'yi çift tıklayın
+          5. Raporlar `output/` klasöründe oluşur
 
           ### ⚠️ Önemli Notlar
           - İlk çalıştırmada Windows Defender uyarısı alabilirsiniz
           - "Yine de çalıştır" seçeneğini tıklayın
-          - Python kurulumu gerektirmez
+          - Logo indirme için: `2025-11-09_bankalar_listesi.xlsx` gerekli (opsiyonel)
 
           ### 🔧 Sistem Gereksinimleri
           - Windows 10/11 (64-bit)
-          - En az 100 MB boş disk alanı
+          - En az 200 MB boş disk alanı
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
