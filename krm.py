@@ -935,20 +935,32 @@ def compare_logos(findeks_logo_path: Path, logos_dir: Path) -> Optional[str]:
             except Exception as e:
                 continue
 
-        # Debug: En iyi 5 eşleşmeyi göster
+        # Debug: En iyi 10 eşleşmeyi göster (daha fazla bilgi)
         all_matches.sort(key=lambda x: x['distance'])
-        console.print(f"[dim]  Logo eşleştirme sonuçları (en iyi 5):[/dim]")
-        for i, match in enumerate(all_matches[:5], 1):
+        console.print(f"[cyan]  📊 Logo eşleştirme sonuçları (en iyi 10):[/cyan]")
+        for i, match in enumerate(all_matches[:10], 1):
             bank = logo_filename_to_bank_name(match['file'])
-            console.print(f"[dim]    {i}. {bank}: {match['distance']:.1f} (avg:{match['avg']}, p:{match['phash']}, d:{match['dhash']})[/dim]")
+            dist = match['distance']
+            # Renk kodu: <15 yeşil, <25 sarı, >=25 kırmızı
+            if dist < 15:
+                color = "green"
+                status = "✓"
+            elif dist < 25:
+                color = "yellow"
+                status = "~"
+            else:
+                color = "red"
+                status = "✗"
+            console.print(f"[dim]    [{color}]{status}[/{color}] {i}. {bank}: [bold]{dist:.1f}[/bold] (avg:{match['avg']}, p:{match['phash']}, d:{match['dhash']})[/dim]")
 
-        # Threshold: 20'den küçük = iyi eşleşme (daha esnek)
-        if best_match and best_combined_distance < 20:
+        # Threshold: 30'dan küçük = iyi eşleşme (ESNEK - daha fazla eşleşme)
+        # Bankalar arasındaki logo farklılıklarını tolere etmek için yükseltildi
+        if best_match and best_combined_distance < 30:
             bank_name = logo_filename_to_bank_name(best_match)
             console.print(f"[green]✓ Logo eşleşti: {bank_name} (mesafe: {best_combined_distance:.1f})[/green]")
             return bank_name
         else:
-            console.print(f"[yellow]⚠ Logo eşleştirilemedi (en yakın: {best_combined_distance:.1f})[/yellow]")
+            console.print(f"[yellow]⚠ Logo eşleştirilemedi (en yakın: {best_combined_distance:.1f}, threshold: 30)[/yellow]")
 
         return None
 
@@ -1057,6 +1069,8 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                 else:
                     # Logo bulunamadı, OCR'dan banka ismini al
                     toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
+                    if toplam_lines:
+                        console.print(f"[cyan]  🔍 OCR: Sayfa {page_num+1}'de {len(toplam_lines)} aday bulundu[/cyan]")
 
                 for bank_candidate_raw in toplam_lines:
                     # Logo eşleştirmesinden geliyorsa direkt kullan
@@ -1072,9 +1086,11 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                                   ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
                                    'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
                                    'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
+                            console.print(f"[dim]    ✗ Reddedildi (anahtar kelime yok): {bank_candidate}[/dim]")
                             continue
 
                         bank_name = clean_bank_name_ocr(bank_candidate)
+                        console.print(f"[green]  ✓ Sayfa {page_num+1}: {bank_name} (OCR)[/green]")
 
                     # Banka için limit/risk bloğunu bul
                     bank_pos = text.find(bank_candidate)
@@ -1142,6 +1158,18 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
         console.print(f"[yellow]⚠ Findeks OCR hatası: {e}[/yellow]")
         console.print(f"[dim]PyMuPDF ve pytesseract gerekli. Kurulum: pip install PyMuPDF pytesseract imagehash[/dim]")
 
+    # Özet bilgi
+    if kurumlar:
+        console.print(f"\n[green]✓ Findeks'ten {len(kurumlar)} kurum bilgisi çıkarıldı:[/green]")
+        for k in kurumlar:
+            console.print(f"  • {k['kurum']} (sayfa {k['sayfa']})")
+    else:
+        console.print(f"\n[yellow]⚠ Findeks'ten hiç kurum bilgisi çıkarılamadı![/yellow]")
+        console.print(f"[dim]Olası nedenler:[/dim]")
+        console.print(f"[dim]  - Logo eşleştirme başarısız (threshold çok katı?)[/dim]")
+        console.print(f"[dim]  - OCR banka isimlerini okuyamadı[/dim]")
+        console.print(f"[dim]  - PDF formatı beklenenden farklı[/dim]")
+
     return kurumlar
 
 def normalize_bank_name(name: str) -> str:
@@ -1198,12 +1226,13 @@ def calculate_match_score(krm_data: Dict[str, Any], findeks_data: Dict[str, Any]
     if krm_kaynak and findeks_data.get('kurum'):
         name_sim = calculate_name_similarity(krm_kaynak, findeks_data['kurum'])
         # İsim benzerliği yüksekse (>0.7), skorun çok düşük olması lazım
-        # İsim benzerliği düşükse (<0.3), bu eşleşme muhtemelen yanlış
-        if name_sim < 0.3:
+        # İsim benzerliği düşükse (<0.15), bu eşleşme muhtemelen yanlış
+        # THRESHOLD DÜŞÜRÜLDÜ: 0.3 -> 0.15 (daha esnek eşleştirme)
+        if name_sim < 0.15:
             # İsim çok farklıysa, bu eşleşmeyi penalize et
             return float('inf')
 
-        # İsim benzerliğini ters çevir (1.0 benzerlik = 0.0 skor, 0.3 benzerlik = 0.7 skor)
+        # İsim benzerliğini ters çevir (1.0 benzerlik = 0.0 skor, 0.15 benzerlik = 0.85 skor)
         name_score = (1.0 - name_sim) * 5.0  # 5x ağırlık - isim ÇOK önemli!
         score += name_score
         match_count += 1
@@ -1331,15 +1360,29 @@ def find_best_matches(
 
     matches.sort(key=lambda x: x['score'])
 
-    # Debug: Eşleştirmeleri konsola yazdır
+    # Debug: Eşleştirmeleri konsola yazdır (DETAYLI)
     if matches:
         console.print(f"\n[green]✓ {len(matches)} Findeks eşleştirmesi bulundu:[/green]")
-        for m in matches[:5]:  # İlk 5'i göster
-            console.print(f"  • {m['krm_kaynak']} ↔ {m['findeks_kurum']} (skor: {m['score']:.2f}, güven: {m['confidence']})")
-        if len(matches) > 5:
-            console.print(f"  ... ve {len(matches) - 5} eşleşme daha")
+        for m in matches[:10]:  # İlk 10'u göster
+            # Güven seviyesine göre renk
+            if m['confidence'] == 'HIGH':
+                conf_color = "green"
+                conf_icon = "✓✓"
+            elif m['confidence'] == 'MEDIUM':
+                conf_color = "yellow"
+                conf_icon = "~"
+            else:
+                conf_color = "red"
+                conf_icon = "?"
+            console.print(f"  [{conf_color}]{conf_icon}[/{conf_color}] {m['krm_kaynak']} ↔ {m['findeks_kurum']} (skor: {m['score']:.2f}, güven: {m['confidence']}, sayfa: {m['findeks_sayfa']})")
+        if len(matches) > 10:
+            console.print(f"  ... ve {len(matches) - 10} eşleşme daha")
     else:
         console.print("[yellow]⚠ Hiç Findeks eşleştirmesi bulunamadı![/yellow]")
+        console.print("[dim]Kontrol edin:[/dim]")
+        console.print("[dim]  1. Findeks PDF'inde logo var mı?[/dim]")
+        console.print("[dim]  2. logos/ klasöründe ilgili bankalar var mı?[/dim]")
+        console.print("[dim]  3. OCR doğru banka isimlerini okuyor mu?[/dim]")
 
     return matches
 
