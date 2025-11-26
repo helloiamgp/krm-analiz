@@ -1474,7 +1474,9 @@ def find_best_matches(
         best_score = float('inf')
 
         for findeks_inst in findeks_data:
-            score = calculate_match_score(krm_combined, findeks_inst, kaynak)
+            # İsim benzerliğini KULLANMA - KRM kaynak isimleri "KAYNAK-XXX" formatında
+            # Sadece sayıları karşılaştır: nakdi/gayri nakdi limit/risk ve vade tarihi
+            score = calculate_match_score(krm_combined, findeks_inst, krm_kaynak='')  # Boş gönder
             if score < best_score:
                 best_score = score
                 best_match = findeks_inst
