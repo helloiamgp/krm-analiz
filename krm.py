@@ -845,6 +845,32 @@ def parse_number_ocr(text: str) -> float:
     except:
         return 0.0
 
+def extract_text_from_logo(logo_path: Path) -> str:
+    """
+    Logo görselinden OCR ile metin çıkar.
+
+    Args:
+        logo_path: Logo dosyasının yolu
+
+    Returns:
+        Çıkarılan metin (lowercase, temizlenmiş)
+    """
+    try:
+        import pytesseract
+        from PIL import Image
+
+        img = Image.open(logo_path)
+
+        # OCR yap (eng dili, sadece büyük harfler)
+        text = pytesseract.image_to_string(img, lang='eng', config='--psm 6')
+
+        # Temizle: sadece harf ve boşluk
+        text_clean = re.sub(r'[^a-zA-Z\s]', '', text).lower().strip()
+
+        return text_clean
+    except Exception as e:
+        return ""
+
 def logo_filename_to_bank_name(filename: str) -> str:
     """Logo dosya isminden banka ismini çıkar."""
     # akbank_t_a_s.png -> Akbank
@@ -953,14 +979,90 @@ def compare_logos(findeks_logo_path: Path, logos_dir: Path) -> Optional[str]:
                 status = "✗"
             console.print(f"[dim]    [{color}]{status}[/{color}] {i}. {bank}: [bold]{dist:.1f}[/bold] (avg:{match['avg']}, p:{match['phash']}, d:{match['dhash']})[/dim]")
 
-        # Threshold: 30'dan küçük = iyi eşleşme (ESNEK - daha fazla eşleşme)
-        # Bankalar arasındaki logo farklılıklarını tolere etmek için yükseltildi
-        if best_match and best_combined_distance < 30:
+        # HYBRID EŞLEŞTIRME: Logo Hash + OCR Fallback
+        # Eğer en iyi eşleşme belirsizse (>15), OCR ile doğrula
+
+        if best_match and best_combined_distance < 15:
+            # ÇOK İYİ EŞLEŞME - Direkt kullan
             bank_name = logo_filename_to_bank_name(best_match)
-            console.print(f"[green]✓ Logo eşleşti: {bank_name} (mesafe: {best_combined_distance:.1f})[/green]")
+            console.print(f"[green]✓ Logo eşleşti (HASH): {bank_name} (mesafe: {best_combined_distance:.1f})[/green]")
             return bank_name
+
+        elif best_match and best_combined_distance < 30:
+            # BELİRSİZ EŞLEŞME - OCR ile doğrula
+            console.print(f"[yellow]⚠ Logo eşleşmesi belirsiz ({best_combined_distance:.1f}), OCR ile doğrulanıyor...[/yellow]")
+
+            # Findeks logosundaki metni oku
+            findeks_text = extract_text_from_logo(findeks_logo_path)
+
+            if findeks_text:
+                console.print(f"[dim]  OCR metni: '{findeks_text}'[/dim]")
+
+                # En iyi 5 adayı OCR ile kontrol et
+                best_text_match = None
+                best_text_similarity = 0.0
+
+                for match in all_matches[:5]:
+                    # Dosya isminden banka ismini çıkar (snake_case)
+                    candidate_name = Path(match['file']).stem  # akbank_t_a_s
+                    # Temizle
+                    candidate_clean = candidate_name.replace('_', ' ').lower()
+
+                    # Metin benzerliği
+                    from difflib import SequenceMatcher
+                    similarity = SequenceMatcher(None, findeks_text, candidate_clean).ratio()
+
+                    console.print(f"[dim]    '{candidate_clean}' benzerlik: {similarity:.2f}[/dim]")
+
+                    if similarity > best_text_similarity:
+                        best_text_similarity = similarity
+                        best_text_match = match['file']
+
+                # Yeterli metin benzerliği varsa (>0.4), OCR sonucunu kullan
+                if best_text_similarity > 0.4:
+                    bank_name = logo_filename_to_bank_name(best_text_match)
+                    console.print(f"[green]✓ Logo eşleşti (OCR): {bank_name} (metin benzerlik: {best_text_similarity:.2f})[/green]")
+                    return bank_name
+                else:
+                    # OCR de yardımcı olmadı, hash sonucunu kullan
+                    bank_name = logo_filename_to_bank_name(best_match)
+                    console.print(f"[yellow]~ Logo eşleşti (HASH-düşük güven): {bank_name} (mesafe: {best_combined_distance:.1f})[/yellow]")
+                    return bank_name
+            else:
+                # OCR metin çıkaramadı, hash sonucunu kullan
+                bank_name = logo_filename_to_bank_name(best_match)
+                console.print(f"[yellow]~ Logo eşleşti (HASH-OCR başarısız): {bank_name} (mesafe: {best_combined_distance:.1f})[/yellow]")
+                return bank_name
+
         else:
-            console.print(f"[yellow]⚠ Logo eşleştirilemedi (en yakın: {best_combined_distance:.1f}, threshold: 30)[/yellow]")
+            # ÇOK KÖTÜ EŞLEŞME - OCR ile yeniden ara
+            console.print(f"[red]✗ Logo hash eşleştirmesi başarısız ({best_combined_distance:.1f}), sadece OCR deneniyor...[/red]")
+
+            findeks_text = extract_text_from_logo(findeks_logo_path)
+
+            if findeks_text:
+                console.print(f"[dim]  OCR metni: '{findeks_text}'[/dim]")
+
+                # Tüm logoların dosya isimlerini kontrol et
+                best_text_match = None
+                best_text_similarity = 0.0
+
+                for logo_file in logos_dir.glob('*.png'):
+                    candidate_name = logo_file.stem.replace('_', ' ').lower()
+
+                    from difflib import SequenceMatcher
+                    similarity = SequenceMatcher(None, findeks_text, candidate_name).ratio()
+
+                    if similarity > best_text_similarity:
+                        best_text_similarity = similarity
+                        best_text_match = logo_file.name
+
+                if best_text_similarity > 0.3:
+                    bank_name = logo_filename_to_bank_name(best_text_match)
+                    console.print(f"[green]✓ Logo eşleşti (SADECE OCR): {bank_name} (metin benzerlik: {best_text_similarity:.2f})[/green]")
+                    return bank_name
+
+            console.print(f"[red]✗ Logo eşleştirilemedi (hash ve OCR başarısız)[/red]")
 
         return None
 

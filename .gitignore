@@ -36,6 +36,7 @@ test_*/
 test_firma*/
 *_test/
 example_*/
+findeks_logos_extracted/
 
 # IDE
 .vscode/
