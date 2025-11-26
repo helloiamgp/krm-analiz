@@ -18,6 +18,11 @@ Logo eşleştirme ve OCR sisteminde kritik iyileştirmeler yapıldı. Artık met
    - Logo eşleştirmesi başarılıydı ama sayılar çıkarılamıyordu
    - PDF tablosunda "Findeks Kurum" sütunu boş kalıyordu
 
+4. **KRM-Findeks eşleştirme düşük skor**
+   - KRM kaynakları "KAYNAK-XXX" formatında, Findeks ise "Alternatifbank" gibi isimler
+   - İsim benzerliği skoru hep ~0.0 çıkıyordu ve genel skoru düşürüyordu
+   - Eşleştirme başarısız oluyordu
+
 ## ✨ Çözüm: 3 Seviyeli Hybrid Sistem
 
 ### 1️⃣ Hash < 15 (Mükemmel Eşleşme)
@@ -96,6 +101,11 @@ Logo eşleştirme ve OCR sisteminde kritik iyileştirmeler yapıldı. Artık met
 - **Sorun:** Logo eşleşiyordu ama OCR metninde banka ismini bulamıyordu (`bank_pos = -1`)
 - **Çözüm:** Logo başarılıysa isim aramadan direkt `block = text` (tüm sayfa)
 - **Sonuç:** Limitler başarıyla parse ediliyor ve PDF tablosunda görünüyor
+
+### 3. İsim Benzerliği Eşleştirme Sorunu Düzeltildi
+- **Sorun:** KRM kaynakları "KAYNAK-XXX" formatında olduğundan Findeks banka isimleriyle asla eşleşmiyordu
+- **Çözüm:** `find_best_matches()` fonksiyonunda `krm_kaynak=''` boş gönderilerek isim benzerliği devre dışı bırakıldı
+- **Sonuç:** Eşleştirme artık sadece sayısal verilere dayanıyor (nakdi/gayrinakdi limit/risk ve revize tarihi)
 
 ## 🎨 Kullanıcı Deneyimi İyileştirmeleri
 
@@ -176,6 +186,8 @@ Yok - Geriye dönük uyumlu.
 ## 📝 Commits
 
 ```
+f967887 fix: İsim benzerliği devre dışı - sadece sayısal eşleştirme
+354dd91 docs: PR açıklaması güncellendi - son bug fix'ler eklendi
 196afce fix: Findeks logo eşleştirmesi - sayı çıkarma düzeltildi
 13b1d46 fix: Logo eşleştirme algoritması iyileştirildi - DEBUG MOD
 9090291 docs: PR açıklaması eklendi
