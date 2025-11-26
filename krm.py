@@ -1164,42 +1164,9 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
 
                 # LOGO EŞLEŞTİRMESİ BAŞARILI MI?
                 if bank_name_from_logo:
-                    # Logo bulundu! OCR ile sadece sayıları al, isim olarak logo eşleşmesini kullan
+                    # Logo bulundu! OCR ile sadece sayıları al
                     bank_name = bank_name_from_logo
-                    # Toplam bulunana kadar OCR'dan text'i parse et
-                    toplam_lines = [bank_name]  # Tek banka var
-                else:
-                    # Logo bulunamadı, OCR'dan banka ismini al
-                    toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
-                    if toplam_lines:
-                        console.print(f"[cyan]  🔍 OCR: Sayfa {page_num+1}'de {len(toplam_lines)} aday bulundu[/cyan]")
-
-                for bank_candidate_raw in toplam_lines:
-                    # Logo eşleştirmesinden geliyorsa direkt kullan
-                    if bank_name_from_logo:
-                        bank_candidate = bank_name_from_logo
-                        bank_name = bank_name_from_logo
-                    else:
-                        # OCR'dan geliyorsa temizle
-                        bank_candidate = re.sub(r'^[^a-zA-Z]+', '', bank_candidate_raw).strip()
-
-                        # Banka anahtar kelimeleri
-                        if not any(keyword in bank_candidate.lower() for keyword in
-                                  ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
-                                   'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
-                                   'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
-                            console.print(f"[dim]    ✗ Reddedildi (anahtar kelime yok): {bank_candidate}[/dim]")
-                            continue
-
-                        bank_name = clean_bank_name_ocr(bank_candidate)
-                        console.print(f"[green]  ✓ Sayfa {page_num+1}: {bank_name} (OCR)[/green]")
-
-                    # Banka için limit/risk bloğunu bul
-                    bank_pos = text.find(bank_candidate)
-                    if bank_pos == -1:
-                        continue
-
-                    block = text[max(0, bank_pos-200):bank_pos+800]
+                    block = text  # Tüm sayfayı kullan
 
                     # Limit ve Risk değerlerini parse et
                     grup_limit_match = re.search(r'Grup\s+([\d.,]+)', block)
@@ -1242,6 +1209,77 @@ def extract_findeks_data(pdf_path: Path) -> List[Dict[str, Any]]:
                     if any([kurum_data['nakdi_limit'], kurum_data['gayrinakdi_limit'],
                            kurum_data['nakdi_risk'], kurum_data['gayrinakdi_risk']]):
                         kurumlar.append(kurum_data)
+                        console.print(f"[green]  ✓ {bank_name}: Limitler çıkarıldı (Nakdi: {kurum_data['nakdi_limit']:,.0f}, Toplam: {kurum_data['toplam_limit']:,.0f})[/green]")
+                    else:
+                        console.print(f"[yellow]  ⚠ {bank_name}: Limitler bulunamadı (OCR başarısız)[/yellow]")
+
+                else:
+                    # Logo bulunamadı, OCR'dan banka ismini al
+                    toplam_lines = re.findall(r'(.{5,40})\s+Toplam\s+[\d.,]+', text)
+                    if toplam_lines:
+                        console.print(f"[cyan]  🔍 OCR: Sayfa {page_num+1}'de {len(toplam_lines)} aday bulundu[/cyan]")
+
+                    for bank_candidate_raw in toplam_lines:
+                        # OCR'dan geliyorsa temizle
+                        bank_candidate = re.sub(r'^[^a-zA-Z]+', '', bank_candidate_raw).strip()
+
+                        # Banka anahtar kelimeleri
+                        if not any(keyword in bank_candidate.lower() for keyword in
+                                  ['bank', 'vakif', 'garanti', 'destekbank', 'deniz', 'ing', 'qnb',
+                                   'yapi', 'kredi', 'anadolu', 'turkish', 'seker', 'halk', 'ziraat',
+                                   'teb', 'akb', 'odea', 'fiba', 'aktif', 'faktif']):
+                            console.print(f"[dim]    ✗ Reddedildi (anahtar kelime yok): {bank_candidate}[/dim]")
+                            continue
+
+                        bank_name = clean_bank_name_ocr(bank_candidate)
+                        console.print(f"[green]  ✓ Sayfa {page_num+1}: {bank_name} (OCR)[/green]")
+
+                        # Banka isminin olduğu bloğu bul
+                        bank_pos = text.find(bank_candidate)
+                        if bank_pos == -1:
+                            continue
+                        block = text[max(0, bank_pos-200):bank_pos+800]
+
+                        # Limit ve Risk değerlerini parse et
+                        grup_limit_match = re.search(r'Grup\s+([\d.,]+)', block)
+                        nakdi_limit_match = re.search(r'Nakdi\s+([\d.,]+)', block)
+                        gayri_limit_match = re.search(r'Gayri\s+Nakdi\s+([\d.,]+)', block)
+                        toplam_limit_match = re.search(r'Toplam\s+([\d.,]+)', block)
+
+                        # Risk değerleri
+                        risk_section = block[block.find('RISK (TL)'):] if 'RISK (TL)' in block else block
+                        nakdi_risk_matches = re.findall(r'Nakdi\s+([\d.,]+)', risk_section)
+                        gayri_risk_matches = re.findall(r'Gayri\s+Nakdi\s+([\d.,]+)', risk_section)
+                        toplam_risk_matches = re.findall(r'Toplam\s+([\d.,]+)', risk_section)
+
+                        # Vade tarihini bul
+                        revize_tarihi = None
+                        date_patterns = [
+                            r'(?:Genel\s+Revize|Son\s+Revize|Vade).*?(\d{2}[./]\d{2}[./]\d{4})',
+                            r'(\d{2}[./]\d{2}[./]\d{4})',
+                        ]
+                        for pattern in date_patterns:
+                            date_match = re.search(pattern, block)
+                            if date_match:
+                                revize_tarihi = parse_date(date_match.group(1))
+                                break
+
+                        kurum_data = {
+                            'sayfa': page_num + 1,
+                            'kurum': bank_name,
+                            'grup_limit': parse_number_ocr(grup_limit_match.group(1)) if grup_limit_match else 0.0,
+                            'nakdi_limit': parse_number_ocr(nakdi_limit_match.group(1)) if nakdi_limit_match else 0.0,
+                            'gayrinakdi_limit': parse_number_ocr(gayri_limit_match.group(1)) if gayri_limit_match else 0.0,
+                            'toplam_limit': parse_number_ocr(toplam_limit_match.group(1)) if toplam_limit_match else 0.0,
+                            'nakdi_risk': parse_number_ocr(nakdi_risk_matches[-1]) if nakdi_risk_matches else 0.0,
+                            'gayrinakdi_risk': parse_number_ocr(gayri_risk_matches[-1]) if gayri_risk_matches else 0.0,
+                            'toplam_risk': parse_number_ocr(toplam_risk_matches[-1]) if toplam_risk_matches else 0.0,
+                            'revize_tarihi': revize_tarihi,
+                        }
+
+                        if any([kurum_data['nakdi_limit'], kurum_data['gayrinakdi_limit'],
+                               kurum_data['nakdi_risk'], kurum_data['gayrinakdi_risk']]):
+                            kurumlar.append(kurum_data)
 
             except Exception as e:
                 console.print(f"[dim]Sayfa {page_num+1} OCR hatası: {e}[/dim]")
