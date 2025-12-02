@@ -2483,9 +2483,19 @@ def main() -> None:
                 })
 
                 if result['success']:
-                    pdf_output = generate_pdf(result, output_dir)
-                    excel_output = generate_excel(result, output_dir)
-                    progress.console.print(f"    [green]✓ {krm_pdf.name}[/green] → PDF + Excel")
+                    # PDF oluştur
+                    try:
+                        pdf_output = generate_pdf(result, output_dir)
+                        progress.console.print(f"    [green]✓ PDF:[/green] {pdf_output.name}")
+                    except Exception as e:
+                        progress.console.print(f"    [red]✗ PDF oluşturma hatası:[/red] {e}")
+
+                    # Excel oluştur
+                    try:
+                        excel_output = generate_excel(result, output_dir)
+                        progress.console.print(f"    [green]✓ Excel:[/green] {excel_output.name}")
+                    except Exception as e:
+                        progress.console.print(f"    [red]✗ Excel oluşturma hatası:[/red] {e}")
                 else:
                     progress.console.print(f"    [red]✗ {krm_pdf.name}: {result.get('error', 'Hata')}[/red]")
 
