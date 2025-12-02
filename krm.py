@@ -18,6 +18,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 from difflib import SequenceMatcher
+
+# openpyxl imports (Excel export)
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -2053,6 +2058,238 @@ def generate_pdf(result: Dict[str, Any], output_dir: Path) -> Path:
 
     return pdf_path
 
+def generate_excel(result: Dict[str, Any], output_dir: Path) -> Path:
+    """
+    Excel rapor oluştur (4 sheet: Özet, Aktif Kaynaklar, Pasif Kaynaklar, Anomaliler).
+
+    Args:
+        result: analyze_report() fonksiyonundan dönen sonuç dict'i
+        output_dir: Excel'in kaydedileceği dizin
+
+    Returns:
+        Oluşturulan Excel dosyasının Path'i
+    """
+    # Dosya adı
+    excel_filename = Path(result['pdf_name']).stem + '.xlsx'
+    excel_path = output_dir / excel_filename
+
+    # Workbook oluştur
+    wb = Workbook()
+
+    # Stil tanımları
+    header_font = Font(bold=True, color='FFFFFF')
+    header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+    header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    zebra_fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+    critical_fill = PatternFill(start_color='FFE6E6', end_color='FFE6E6', fill_type='solid')
+    warning_fill = PatternFill(start_color='FFF9E6', end_color='FFF9E6', fill_type='solid')
+
+    thin_border = Border(
+        left=Side(style='thin', color='CCCCCC'),
+        right=Side(style='thin', color='CCCCCC'),
+        top=Side(style='thin', color='CCCCCC'),
+        bottom=Side(style='thin', color='CCCCCC')
+    )
+
+    number_alignment = Alignment(horizontal='right', vertical='center')
+    text_alignment = Alignment(horizontal='left', vertical='center')
+
+    # Findeks eşleştirmelerini dict'e çevir
+    findeks_matches = result.get('findeks_matches', [])
+    findeks_map = {match['krm_kaynak']: match['findeks_kurum'] for match in findeks_matches}
+
+    # ========================================
+    # SHEET 1: ÖZET
+    # ========================================
+    ws_ozet = wb.active
+    ws_ozet.title = "Özet"
+
+    # İstatistikler
+    total_sources = len(result['active_sources']) + len(result['passive_sources'])
+    active_count = len(result['active_sources'])
+    passive_count = len(result['passive_sources'])
+    critical_count = len([a for a in result['anomalies'] if a['severity'] == 'CRITICAL'])
+    warning_count = len([a for a in result['anomalies'] if a['severity'] == 'WARNING'])
+
+    ozet_data = [
+        ['Bilgi', 'Değer'],
+        ['Firma', result['company_name']],
+        ['Rapor Tarihi', result['report_date']],
+        ['Analiz Tarihi', result['analysis_date']],
+        ['Kaynak Dosya', result['pdf_name']],
+        ['Toplam Kaynak', total_sources],
+        ['Aktif Kaynak', active_count],
+        ['Pasif Kaynak', passive_count],
+        ['Kritik Sorun', critical_count],
+        ['Uyarı', warning_count]
+    ]
+
+    for row_idx, row_data in enumerate(ozet_data, 1):
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws_ozet.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+
+            if row_idx == 1:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+            else:
+                cell.alignment = text_alignment
+                if row_idx % 2 == 0:
+                    cell.fill = zebra_fill
+
+    ws_ozet.column_dimensions['A'].width = 20
+    ws_ozet.column_dimensions['B'].width = 40
+
+    # ========================================
+    # SHEET 2: AKTİF KAYNAKLAR
+    # ========================================
+    ws_aktif = wb.create_sheet("Aktif Kaynaklar")
+
+    aktif_headers = ['Kaynak', 'Findeks Kurum', 'Grup Limit', 'Nakdi Limit', 'Nakdi Risk',
+                     'Gayrinakdi Limit', 'Gayrinakdi Risk', 'Toplam Limit', 'Toplam Risk',
+                     'Kullanım %', 'Vade']
+
+    # Başlık satırı
+    for col_idx, header in enumerate(aktif_headers, 1):
+        cell = ws_aktif.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # Veri satırları
+    for row_idx, kaynak in enumerate(sorted(result['active_sources']), 2):
+        limit_data = result['limits'].get(kaynak, {})
+        risk_data = result['risks'].get(kaynak, {})
+
+        grup_limit = limit_data.get('grup', 0)
+        nakdi_limit = limit_data.get('nakdi', 0)
+        nakdi_risk = risk_data.get('nakdi', 0)
+        gayrinakdi_limit = limit_data.get('gayrinakdi', 0)
+        gayrinakdi_risk = risk_data.get('gayrinakdi', 0)
+        toplam_limit = limit_data.get('toplam', 0)
+        toplam_risk = risk_data.get('toplam', 0)
+
+        revize_tarihi = limit_data.get('revize_tarihi')
+        vade_str = revize_tarihi.strftime('%d.%m.%Y') if revize_tarihi else '-'
+
+        kullanim = (toplam_risk / toplam_limit * 100) if toplam_limit > 0 else 0
+        findeks_kurum = findeks_map.get(kaynak, '-')
+
+        row_data = [kaynak, findeks_kurum, grup_limit, nakdi_limit, nakdi_risk,
+                    gayrinakdi_limit, gayrinakdi_risk, toplam_limit, toplam_risk,
+                    kullanim, vade_str]
+
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws_aktif.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+
+            # Zebra stripe
+            if row_idx % 2 == 0:
+                cell.fill = zebra_fill
+
+            # Sayı formatı ve hizalama
+            if col_idx in [3, 4, 5, 6, 7, 8, 9]:  # Limit ve risk kolonları
+                cell.number_format = '#,##0'
+                cell.alignment = number_alignment
+            elif col_idx == 10:  # Kullanım %
+                cell.number_format = '0.0'
+                cell.alignment = number_alignment
+            else:
+                cell.alignment = text_alignment
+
+    # Kolon genişlikleri
+    aktif_widths = [20, 20, 15, 15, 15, 15, 15, 15, 15, 12, 12]
+    for col_idx, width in enumerate(aktif_widths, 1):
+        ws_aktif.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # ========================================
+    # SHEET 3: PASİF KAYNAKLAR
+    # ========================================
+    ws_pasif = wb.create_sheet("Pasif Kaynaklar")
+
+    pasif_headers = ['Kaynak', 'Son Revize', 'Grup Limit', 'Toplam Limit', 'Durum']
+
+    # Başlık satırı
+    for col_idx, header in enumerate(pasif_headers, 1):
+        cell = ws_pasif.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # Veri satırları
+    for row_idx, kaynak in enumerate(sorted(result['passive_sources']), 2):
+        limit_data = result['limits'].get(kaynak, {})
+
+        revize_tarihi = limit_data.get('revize_tarihi')
+        revize_str = revize_tarihi.strftime('%d.%m.%Y') if revize_tarihi else 'Bilinmiyor'
+
+        grup_limit = limit_data.get('grup', 0)
+        toplam_limit = limit_data.get('toplam', 0)
+
+        row_data = [kaynak, revize_str, grup_limit, toplam_limit, 'Pasif']
+
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws_pasif.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+
+            if row_idx % 2 == 0:
+                cell.fill = zebra_fill
+
+            if col_idx in [3, 4]:  # Limit kolonları
+                cell.number_format = '#,##0'
+                cell.alignment = number_alignment
+            else:
+                cell.alignment = text_alignment
+
+    # Kolon genişlikleri
+    pasif_widths = [20, 15, 15, 15, 10]
+    for col_idx, width in enumerate(pasif_widths, 1):
+        ws_pasif.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # ========================================
+    # SHEET 4: ANOMALİLER
+    # ========================================
+    ws_anomali = wb.create_sheet("Anomaliler")
+
+    anomali_headers = ['Kaynak', 'Seviye', 'Tip', 'Detay']
+
+    # Başlık satırı
+    for col_idx, header in enumerate(anomali_headers, 1):
+        cell = ws_anomali.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # Veri satırları
+    for row_idx, anomaly in enumerate(result['anomalies'], 2):
+        row_data = [anomaly['kaynak'], anomaly['severity'], anomaly['type'], anomaly['detail']]
+
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws_anomali.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.alignment = text_alignment
+
+            # Seviyeye göre renklendirme
+            if anomaly['severity'] == 'CRITICAL':
+                cell.fill = critical_fill
+            elif anomaly['severity'] == 'WARNING':
+                cell.fill = warning_fill
+
+    # Kolon genişlikleri
+    anomali_widths = [20, 12, 25, 60]
+    for col_idx, width in enumerate(anomali_widths, 1):
+        ws_anomali.column_dimensions[get_column_letter(col_idx)].width = width
+
+    # Excel dosyasını kaydet
+    wb.save(excel_path)
+
+    return excel_path
+
 def print_single_report(result: Dict[str, Any]) -> None:
     """
     Tek rapor için terminal özeti yazdır.
@@ -2247,7 +2484,8 @@ def main() -> None:
 
                 if result['success']:
                     pdf_output = generate_pdf(result, output_dir)
-                    progress.console.print(f"    [green]✓ {krm_pdf.name}[/green]")
+                    excel_output = generate_excel(result, output_dir)
+                    progress.console.print(f"    [green]✓ {krm_pdf.name}[/green] → PDF + Excel")
                 else:
                     progress.console.print(f"    [red]✗ {krm_pdf.name}: {result.get('error', 'Hata')}[/red]")
 
@@ -2294,7 +2532,7 @@ def main() -> None:
     if total_critical == 0 and total_warnings == 0:
         console.print("\n[bold green]🎉 Tüm raporlar temiz![/bold green]")
 
-    console.print(f"\n[green]✓ Tüm PDF raporlar ilgili klasörlerdeki output/ dizinlerine kaydedildi[/green]")
+    console.print(f"\n[green]✓ Tüm PDF ve Excel raporlar ilgili klasörlerdeki output/ dizinlerine kaydedildi[/green]")
 
 if __name__ == "__main__":
     try:
