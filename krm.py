@@ -2488,14 +2488,18 @@ def main() -> None:
                         pdf_output = generate_pdf(result, output_dir)
                         progress.console.print(f"    [green]✓ PDF:[/green] {pdf_output.name}")
                     except Exception as e:
+                        import traceback
                         progress.console.print(f"    [red]✗ PDF oluşturma hatası:[/red] {e}")
+                        progress.console.print(f"    [dim]{traceback.format_exc()}[/dim]")
 
-                    # Excel oluştur
+                    # Excel oluştur (Findeks bağımsız - sadece KRM verisi yeterli)
                     try:
                         excel_output = generate_excel(result, output_dir)
                         progress.console.print(f"    [green]✓ Excel:[/green] {excel_output.name}")
                     except Exception as e:
+                        import traceback
                         progress.console.print(f"    [red]✗ Excel oluşturma hatası:[/red] {e}")
+                        progress.console.print(f"    [dim]{traceback.format_exc()}[/dim]")
                 else:
                     progress.console.print(f"    [red]✗ {krm_pdf.name}: {result.get('error', 'Hata')}[/red]")
 
