@@ -2473,9 +2473,9 @@ def main() -> None:
                     description=f"[yellow]  ↳ {krm_pdf.name[:40]}..."
                 )
 
-                # İlk klasörün ilk PDF'i için live status göster (demo)
-                show_live = (folder_idx == 1 and pdf_idx == 1)
-                result = analyze_report_with_live_status(krm_pdf, findeks_pdf, show_live=show_live)
+                # Live status devre dışı - Progress bar ile çakışıyor (Rich limitation)
+                # show_live = (folder_idx == 1 and pdf_idx == 1)
+                result = analyze_report_with_live_status(krm_pdf, findeks_pdf, show_live=False)
                 folder_results.append(result)
                 all_results.append({
                     'folder': folder.name,
